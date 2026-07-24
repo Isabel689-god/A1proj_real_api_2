@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>智能检修问答助手</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      max-width: 800px;
+      margin: 30px auto;
+      padding: 0 20px;
+      background: #f6f6f6;
+    }
+    .chat-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #2563eb;
+      color: white;
+      padding: 14px 20px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .chat-messages {
+      padding: 20px;
+      height: 500px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    .user-message {
+      background: #2563eb;
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .ai-message {
+      background: #f1f5f9;
+      color: #1e293b;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .loading {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .loading span {
+      width: 8px;
+      height: 8px;
+      background: #94a3b8;
+      border-radius: 50%;
+      animation: loading 1s infinite alternate;
+    }
+    @keyframes loading {
+      0% { opacity: 0.5; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1.2); }
+    }
+    .chat-input {
+      padding: 20px;
+      border-top: 1px solid #eee;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    textarea {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      resize: none;
+      height: 60px;
+      font-size: 14px;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+    button {
+      padding: 0 24px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="chat-container">
+    <div class="chat-header">智能检修问答助手</div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="message ai-message">你好！我是智能检修助手，请问有什么检修问题需要帮助？</div>
+    </div>
+    <div class="chat-input">
+      <div class="input-row">
+        <textarea id="question" placeholder="请输入检修问题（如：摩托车打不着火怎么办？）..."></textarea>
+        <button onclick="sendQuestion()" id="sendBtn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sessionId = "sess_" + Date.now();
+    const userId = "user_001";
+    const apiBase = "http://localhost:8000";
+
+    async function sendQuestion() {
+      const btn = document.getElementById("sendBtn");
+      const question = document.getElementById("question").value.trim();
+      const chatMessages = document.getElementById("chatMessages");
+
+      if (!question) return alert("请输入检修问题！");
+
+      document.getElementById("question").value = "";
+      btn.disabled = true;
+
+      const userMsg = document.createElement("div");
+      userMsg.className = "message user-message";
+      userMsg.innerText = question;
+      chatMessages.appendChild(userMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      const aiLoading = document.createElement("div");
+      aiLoading.className = "message ai-message loading";
+      aiLoading.innerHTML = `<span></span><span></span><span></span>`;
+      chatMessages.appendChild(aiLoading);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      try {
+        // ✅ 这里是我修改的核心：接口 + 跨域 + 兼容你后端
+        const res = await fetch(`${apiBase}/chat/stream`, {
+          method: "POST",
+          mode: "cors",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            session_id: sessionId,
+            question: question,
+            image_url: null
+          })
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let fullAnswer = "";
+        aiLoading.className = "message ai-message";
+        aiLoading.innerText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split("\n");
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            if (data.startsWith("[ERROR]")) {
+              fullAnswer += "\n❌ 服务异常：" + data.slice(8);
+            } else {
+              fullAnswer += data;
+            }
+            aiLoading.innerText = fullAnswer;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+        }
+
+      } catch (err) {
+        aiLoading.className = "message ai-message";
+        aiLoading.innerText = "❌ 请求失败：请检查后端服务是否启动，或后端缺少CORS配置";
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    document.getElementById("question").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendQuestion();
+      }
+    });
+  </script>
+</body>
+</html>

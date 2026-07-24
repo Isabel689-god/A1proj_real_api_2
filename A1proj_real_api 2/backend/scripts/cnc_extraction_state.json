@@ -1,0 +1,8 @@
+{
+  "processed_batches": 63,
+  "total_triples": 2260,
+  "errors": [
+    "batch 18: Request timed out.",
+    "batch 56: Request timed out."
+  ]
+}

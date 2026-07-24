@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif; background: #f5f7fa; min-height: 100vh; }
+        .header { background: white; padding: 16px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; color: #333; font-weight: 600; }
+        .controls { display: flex; gap: 10px; align-items: center; }
+        .controls select { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; }
+        .controls button { padding: 6px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; background: #4a90d9; color: white; }
+        .controls button:hover { background: #357abd; }
+        .stats { display: flex; gap: 20px; padding: 10px 24px; background: white; border-bottom: 1px solid #eee; font-size: 13px; color: #666; }
+        .stats span { color: #4a90d9; font-weight: bold; }
+        #chart-container { width: 100%; height: calc(100vh - 100px); }
+        .loading { display: flex; justify-content: center; align-items: center; height: 100%; color: #999; }
+        .error { color: #e74c3c; padding: 40px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1></h1>
+        <div class="controls">
+            <select id="typeFilter">
+                <option value="">全部类型</option>
+                <option value="device">设备</option>
+                <option value="component">部件</option>
+                <option value="fault">故障</option>
+                <option value="fault_cause">原因</option>
+                <option value="solution">解决方案</option>
+            </select>
+            <button onclick="loadGraph()">刷新</button>
+        </div>
+    </div>
+    <div class="stats">
+        节点数: <span id="nodeCount">0</span> | 
+        关系数: <span id="edgeCount">0</span> | 
+        类型数: <span id="categoryCount">0</span>
+    </div>
+    <div id="chart-container"><div class="loading">加载中...</div></div>
+
+    <script>
+        const API_BASE = '/knowledge';
+        let chart = null;
+        let currentData = null;
+
+        const TYPE_COLORS = {
+            device: '#4a90d9',
+            component: '#52c41a',
+            fault: '#ff4d4f',
+            fault_cause: '#faad14',
+            solution: '#13c2c2',
+            document: '#909399',
+            source_file: '#b0c4de',
+            device_model: '#4a90d9',
+            tag: '#e6a23c',
+        };
+
+        const MAX_NODES = 800;
+
+        function initChart() {
+            chart = echarts.init(document.getElementById('chart-container'));
+            window.addEventListener('resize', () => chart.resize());
+        }
+
+        async function loadGraph() {
+            const typeFilter = document.getElementById('typeFilter').value;
+            const url = typeFilter ? `${API_BASE}/graph?entity_type=${typeFilter}` : `${API_BASE}/graph`;
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+                if (result.code === 200) {
+                    currentData = result.data;
+                    renderGraph(currentData);
+                    updateStats(currentData);
+                } else {
+                    showError('加载失败: ' + result.message);
+                }
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+            }
+        }
+
+        function renderGraph(data) {
+            // 大数据量采样：只保留连接度最高的节点
+            if (data.nodes.length > MAX_NODES) {
+                const deg = {};
+                data.edges.forEach(e => {
+                    deg[e.source] = (deg[e.source] || 0) + 1;
+                    deg[e.target] = (deg[e.target] || 0) + 1;
+                });
+                data.nodes.sort((a, b) => (deg[b.id] || 0) - (deg[a.id] || 0));
+                data.nodes = data.nodes.slice(0, MAX_NODES);
+                const keep = new Set(data.nodes.map(n => n.id));
+                data.edges = data.edges.filter(e => keep.has(e.source) && keep.has(e.target));
+                data.categories = [...new Set(data.nodes.map(n => n.category))].map(c => ({
+                    name: c, itemStyle: { color: TYPE_COLORS[c] || '#4a90d9' }
+                }));
+            }
+
+            // 计算每个节点的连接数（度数）
+            const degreeMap = {};
+            data.edges.forEach(edge => {
+                degreeMap[edge.source] = (degreeMap[edge.source] || 0) + 1;
+                degreeMap[edge.target] = (degreeMap[edge.target] || 0) + 1;
+            });
+
+            // 找出最大度数用于归一化
+            const maxDegree = Math.max(...Object.values(degreeMap), 1);
+
+            // 处理节点：根据度数设置大小
+            const nodes = data.nodes.map(node => {
+                const degree = degreeMap[node.id] || 0;
+                // 节点大小：最小15，最大60，根据度数归一化
+                const size = 15 + (degree / maxDegree) * 45;
+                return {
+                    id: node.id,
+                    name: node.name,
+                    value: size,
+                    symbolSize: size,
+                    category: node.category,
+                    itemStyle: {
+                        color: TYPE_COLORS[node.category] || '#4a90d9',
+                        opacity: 0.75,
+                        borderColor: TYPE_COLORS[node.category] || '#4a90d9',
+                        borderWidth: 1
+                    },
+                    label: {
+                        show: true,
+                        formatter: '{b}',
+                        fontSize: Math.max(10, Math.min(14, size / 4)),
+                        color: '#333'
+                    },
+                    tooltip: {
+                        formatter: `<b>${node.name}</b><br/>类型: ${node.category}<br/>连接数: ${degree}<br/>描述: ${node.description || '无'}`
+                    }
+                };
+            });
+
+            // 处理边
+            const edges = data.edges.map(edge => ({
+                source: edge.source,
+                target: edge.target,
+                lineStyle: {
+                    color: '#b0c4de',
+                    width: 1,
+                    opacity: 0.6,
+                    curveness: 0.1
+                },
+                tooltip: {
+                    formatter: `<b>${edge.relation || '关联'}</b><br/>${edge.source} → ${edge.target}`
+                }
+            }));
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(255,255,255,0.95)',
+                    borderColor: '#ddd',
+                    borderWidth: 1,
+                    textStyle: { color: '#333', fontSize: 13 },
+                    padding: [10, 14],
+                    extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 8px;'
+                },
+                legend: {
+                    data: data.categories.map(c => c.name),
+                    bottom: 10,
+                    textStyle: { color: '#666', fontSize: 12 },
+                    itemWidth: 14,
+                    itemHeight: 14
+                },
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: nodes,
+                    links: edges,
+                    categories: data.categories,
+                    roam: true,
+                    draggable: true,
+                    large: true,
+                    force: {
+                        repulsion: 80,
+                        edgeLength: 60,
+                        gravity: 0.25,
+                        layoutAnimation: true,
+                        friction: 0.6
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        itemStyle: { opacity: 1, borderWidth: 2 },
+                        lineStyle: { width: 3, opacity: 1, color: '#4a90d9' }
+                    },
+                    animationDuration: 800,
+                    animationEasingUpdate: 'quinticInOut'
+                }]
+            };
+
+            chart.setOption(option, true);
+        }
+
+        function updateStats(data) {
+            document.getElementById('nodeCount').textContent = data.nodes.length;
+            document.getElementById('edgeCount').textContent = data.edges.length;
+            document.getElementById('categoryCount').textContent = data.categories.length;
+        }
+
+        function showError(msg) {
+            document.getElementById('chart-container').innerHTML = `<div class="error">${msg}</div>`;
+        }
+
+        document.getElementById('typeFilter').addEventListener('change', loadGraph);
+
+        initChart();
+        loadGraph();
+    </script>
+</body>
+</html>
