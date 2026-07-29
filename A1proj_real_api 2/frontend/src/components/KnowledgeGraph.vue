@@ -10,7 +10,7 @@
       <div class="kg-actions">
         <label class="kg-search" aria-label="搜索图谱节点或关系">
           <span>搜索</span>
-          <input v-model.trim="searchText" type="search" placeholder="输入设备、故障、关系..." />
+          <input v-model.trim="searchText" type="search" placeholder="搜索实体、故障或关系..." />
         </label>
         <button class="kg-icon-btn" type="button" title="刷新图谱" @click="loadGraph">刷新</button>
         <button class="kg-icon-btn" type="button" title="重置视图" @click="resetView">重置</button>
@@ -54,7 +54,13 @@
 
     <main class="kg-content">
       <div class="kg-graph-panel">
-        <div ref="nvlContainerRef" class="kg-chart kg-nvl-frame" @click="handleNvlCanvasClick"></div>
+        <div
+          ref="nvlContainerRef"
+          class="kg-chart kg-nvl-frame"
+          @click="handleNvlCanvasClick"
+          @mousemove="handleNvlHover"
+          @mouseleave="hoverInfo = null"
+        ></div>
 
         <div v-if="loading" class="kg-state">
           <div class="kg-loader"></div>
@@ -69,13 +75,30 @@
           <span>换一个关键词或切回全部类型试试。</span>
         </div>
 
+        <div class="kg-graph-key" aria-label="图谱颜色说明">
+          <span v-for="item in graphKeyItems" :key="item.value">
+            <i :style="{ background: item.color }"></i>
+            {{ item.label }}
+          </span>
+        </div>
+
+        <div
+          v-if="hoverInfo"
+          class="kg-hover-card"
+          :style="{ transform: `translate(${hoverInfo.x}px, ${hoverInfo.y}px)` }"
+        >
+          <span>{{ hoverInfo.kind }}</span>
+          <strong>{{ hoverInfo.title }}</strong>
+          <em>{{ hoverInfo.meta }}</em>
+        </div>
+
         <div class="kg-map-tools" aria-label="图谱缩放控制">
           <button type="button" title="放大" @click="zoomIn">+</button>
           <button type="button" title="缩小" @click="zoomOut">-</button>
           <button type="button" title="适应画布" @click="fitNvl()">适应</button>
         </div>
 
-        <div class="kg-canvas-hint">Neo4j NVL 渲染，拖动画布整理结构，滚轮缩放，点击节点查看详情。</div>
+        <div class="kg-canvas-hint">悬停查看实体名称，点击查看邻接详情，边颜色区分关系类型。</div>
       </div>
 
       <aside class="kg-side-panel">
@@ -89,6 +112,20 @@
               <span class="kg-legend-color" :style="{ background: item.color }"></span>
               <span>{{ categoryLabel(item.name) }}</span>
               <strong>{{ item.count }}</strong>
+            </button>
+          </div>
+        </section>
+
+        <section class="kg-panel-section">
+          <div class="kg-section-head">
+            <h3>核心实体</h3>
+            <span>{{ topNodes.length }}</span>
+          </div>
+          <div class="kg-core-list">
+            <button v-for="node in topNodes" :key="node.id" type="button" @click="selectNode(node)">
+              <i :style="{ background: colorFor(node.category) }"></i>
+              <span>{{ node.name }}</span>
+              <strong>{{ degreeMap[node.id] || 0 }}</strong>
             </button>
           </div>
         </section>
@@ -198,7 +235,7 @@ interface NodeDetail {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
-const maxVisibleNodes = 620;
+const maxVisibleNodes = 420;
 
 const typeOptions = [
   { label: '全部', value: '', color: '#8ba4c7' },
@@ -231,7 +268,7 @@ const nvlBaseOptions = {
   disableWebGL: true,
   maxZoom: 3,
   minZoom: 0.05,
-  relationshipThreshold: 0.55,
+  relationshipThreshold: 0.18,
   useWebGL: false,
   renderer: 'canvas',
   instanceId: 'a1-knowledge-graph-nvl',
@@ -252,6 +289,9 @@ const selectedEdge = ref<GraphEdge | null>(null);
 const nodeDetail = ref<NodeDetail | null>(null);
 const layoutMode = ref<LayoutMode>('explore');
 const showLabels = ref(true);
+const hoverInfo = ref<{ x: number; y: number; kind: string; title: string; meta: string } | null>(null);
+
+const graphKeyItems = computed(() => typeOptions.filter((item) => item.value));
 
 const colorMap = computed<Record<string, string>>(() => {
   const fromApi = Object.fromEntries(rawCategories.value.map((item) => [item.name, item.itemStyle?.color || '#6d84a8']));
@@ -352,6 +392,12 @@ const statCards = computed(() => [
   { label: '关系类型', value: relationStats.value.length },
 ]);
 
+const topNodes = computed(() =>
+  [...visibleNodes.value]
+    .sort((a, b) => (degreeMap.value[b.id] || 0) - (degreeMap.value[a.id] || 0))
+    .slice(0, 8)
+);
+
 const edgeByNvlId = computed<Record<string, GraphEdge>>(() => {
   const result: Record<string, GraphEdge> = {};
   visibleEdges.value.forEach((edge, index) => {
@@ -368,16 +414,23 @@ const nvlNodes = computed<NvlNode[]>(() => {
     const degree = degreeMap.value[node.id] || 0;
     const isMatch = Boolean(query && searchedNodeIds.value.has(node.id));
     const isSelected = selectedNode.value?.id === node.id;
-    const size = node.symbolSize || Math.max(22, Math.min(74, 22 + (degree / maxDegree) * 48));
-    const captionVisible = showLabels.value || isMatch || isSelected;
+    const size = node.symbolSize || Math.max(24, Math.min(82, 24 + (degree / maxDegree) * 54));
+    const isHub = topNodes.value.some((item) => item.id === node.id);
+    const captionVisible = (showLabels.value && (isHub || visibleNodes.value.length <= 180)) || isMatch || isSelected;
 
     return {
       id: node.id,
-      caption: captionVisible ? truncate(node.name || node.id, isMatch || isSelected ? 20 : 14) : '',
+      caption: captionVisible ? truncate(node.name || node.id, isMatch || isSelected ? 22 : 16) : '',
+      captions: captionVisible
+        ? [
+            { value: truncate(node.name || node.id, isMatch || isSelected ? 22 : 16), styles: ['bold'] },
+            { value: categoryLabel(node.category) },
+          ]
+        : [],
       color: colorFor(node.category),
       size,
       selected: isSelected || isMatch,
-      captionSize: isMatch || isSelected ? 13 : 10,
+      captionSize: isMatch || isSelected ? 15 : 12,
       captionAlign: 'bottom',
     };
   });
@@ -391,16 +444,21 @@ const nvlRelationships = computed<NvlRelationship[]>(() => {
     const relationMatch = Boolean(query && relation.toLowerCase().includes(query));
     const isSelected = edgeEquals(edge, selectedEdge.value);
 
+    const sourceDegree = degreeMap.value[edge.source] || 0;
+    const targetDegree = degreeMap.value[edge.target] || 0;
+    const isCoreEdge = sourceDegree + targetDegree >= 16;
+    const labelVisible = relationMatch || isSelected || (showLabels.value && visibleEdges.value.length <= 220 && isCoreEdge);
+
     return {
       id: edgeNvlId(edge, index),
       from: edge.source,
       to: edge.target,
       type: relation,
-      caption: relationMatch || isSelected ? truncate(relation, 16) : '',
-      color: relationMatch || isSelected ? '#ffffff' : 'rgba(120, 168, 210, 0.52)',
-      width: relationMatch || isSelected ? 2.8 : 1.2,
+      caption: labelVisible ? truncate(relation, 18) : '',
+      color: relationMatch || isSelected ? '#ffffff' : relationColor(relation),
+      width: relationMatch || isSelected ? 4.2 : isCoreEdge ? 2.9 : 2.05,
       selected: isSelected,
-      captionSize: 10,
+      captionSize: relationMatch || isSelected ? 12 : 10,
     };
   });
 });
@@ -464,11 +522,52 @@ async function fetchNodeDetail(node: GraphNode) {
   }
 }
 
+function handleNvlHover(event: MouseEvent) {
+  const nvl = nvlRef.value;
+  const frame = nvlContainerRef.value;
+  if (!nvl || !frame) return;
+
+  const targets = nvl.getHits(event, ['node', 'relationship'], { hitNodeMarginWidth: 10 })?.nvlTargets;
+  const hitNode = targets?.nodes?.[0]?.data || targets?.nodes?.[0];
+  const hitRelationship = targets?.relationships?.[0]?.data || targets?.relationships?.[0];
+  const rect = frame.getBoundingClientRect();
+
+  if (hitNode?.id) {
+    const node = rawNodes.value.find((item) => item.id === hitNode.id);
+    if (node) {
+      hoverInfo.value = {
+        x: Math.min(event.clientX - rect.left + 16, rect.width - 260),
+        y: Math.min(event.clientY - rect.top + 16, rect.height - 96),
+        kind: categoryLabel(node.category),
+        title: node.name || node.id,
+        meta: `连接数 ${degreeMap.value[node.id] || 0}`,
+      };
+      return;
+    }
+  }
+
+  if (hitRelationship?.id) {
+    const edge = edgeByNvlId.value[hitRelationship.id];
+    if (edge) {
+      hoverInfo.value = {
+        x: Math.min(event.clientX - rect.left + 16, rect.width - 260),
+        y: Math.min(event.clientY - rect.top + 16, rect.height - 96),
+        kind: '关系',
+        title: edge.relation || '关联',
+        meta: `${edge.source} -> ${edge.target}`,
+      };
+      return;
+    }
+  }
+
+  hoverInfo.value = null;
+}
+
 function handleNvlCanvasClick(event: MouseEvent) {
   const nvl = nvlRef.value;
   if (!nvl) return;
 
-  const targets = nvl.getHits(event, ['node', 'relationship'], { hitNodeMarginWidth: 8 })?.nvlTargets;
+  const targets = nvl.getHits(event, ['node', 'relationship'], { hitNodeMarginWidth: 10 })?.nvlTargets;
   const hitNode = targets?.nodes?.[0]?.data || targets?.nodes?.[0];
   const hitRelationship = targets?.relationships?.[0]?.data || targets?.relationships?.[0];
 
@@ -518,8 +617,8 @@ function renderNvl() {
       nvlRelationships.value,
       {
         ...nvlBaseOptions,
-        layout: layoutMode.value === 'explore' ? 'forceDirected' : 'd3Force',
-        layoutOptions: layoutMode.value === 'explore' ? { gravity: 0.05 } : { gravity: 0.16 },
+        layout: layoutMode.value === 'explore' ? 'd3Force' : 'forceDirected',
+        layoutOptions: layoutMode.value === 'explore' ? { gravity: 0.08 } : { gravity: 0.2 },
       },
       {
         onInitialization: () => {
@@ -547,7 +646,7 @@ function scheduleFit(outOnly = false) {
 function fitNvl(outOnly = false) {
   const nvl = nvlRef.value;
   if (!nvl || visibleNodes.value.length === 0) return;
-  nvl.fit(visibleNodes.value.map((node) => node.id), { animated: true, outOnly, maxZoom: 1.4 });
+  nvl.fit(visibleNodes.value.map((node) => node.id), { animated: true, outOnly, maxZoom: 1.65 });
 }
 
 function zoomIn() {
@@ -572,6 +671,7 @@ function resetView() {
   selectedNode.value = null;
   selectedEdge.value = null;
   nodeDetail.value = null;
+  hoverInfo.value = null;
   nextTick(() => {
     renderNvl();
     scheduleFit();
@@ -584,6 +684,16 @@ function colorFor(category: string) {
 
 function categoryLabel(category: string) {
   return categoryNameMap[category] || category;
+}
+
+function relationColor(relation: string) {
+  const key = relation.toLowerCase();
+  if (key.includes('part') || key.includes('包含') || key.includes('组成')) return '#78d64b';
+  if (key.includes('locat') || key.includes('位于')) return '#66b7ff';
+  if (key.includes('cause') || key.includes('原因') || key.includes('导致')) return '#ffbf5b';
+  if (key.includes('solve') || key.includes('方案') || key.includes('处理')) return '#45d6d4';
+  if (key.includes('fault') || key.includes('故障')) return '#ff6b73';
+  return '#9fcbff';
 }
 
 function edgeNvlId(edge: GraphEdge, index: number) {
@@ -846,9 +956,11 @@ onBeforeUnmount(() => {
 .kg-nvl-frame {
   cursor: grab;
   background:
-    linear-gradient(rgba(131, 165, 221, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(131, 165, 221, 0.05) 1px, transparent 1px);
-  background-size: 36px 36px;
+    radial-gradient(circle at 50% 44%, rgba(74, 144, 217, 0.1), transparent 34%),
+    linear-gradient(rgba(131, 165, 221, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(131, 165, 221, 0.06) 1px, transparent 1px),
+    #050b17;
+  background-size: auto, 42px 42px, 42px 42px, auto;
 }
 
 .kg-nvl-frame:active {
@@ -889,6 +1001,69 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.kg-graph-key {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100% - 96px);
+  padding: 7px;
+  border: 1px solid rgba(131, 165, 221, 0.16);
+  border-radius: 6px;
+  background: rgba(6, 11, 24, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.kg-graph-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #cbd9e8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.kg-graph-key i,
+.kg-core-list i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.kg-hover-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  width: min(244px, calc(100% - 28px));
+  padding: 10px 12px;
+  border: 1px solid rgba(142, 183, 230, 0.3);
+  border-radius: 7px;
+  background: rgba(7, 13, 28, 0.94);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+  pointer-events: none;
+}
+
+.kg-hover-card span,
+.kg-hover-card em {
+  display: block;
+  color: #91a9c2;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.kg-hover-card strong {
+  display: block;
+  margin: 4px 0;
+  color: #f8fbff;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .kg-map-tools {
@@ -971,14 +1146,16 @@ onBeforeUnmount(() => {
 
 .kg-legend-list,
 .kg-relation-list,
-.kg-neighbor-list {
+.kg-neighbor-list,
+.kg-core-list {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
 .kg-legend-item,
-.kg-relation-list button {
+.kg-relation-list button,
+.kg-core-list button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -998,21 +1175,28 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.kg-core-list button {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
 .kg-legend-item:hover,
-.kg-relation-list button:hover {
+.kg-relation-list button:hover,
+.kg-core-list button:hover {
   border-color: rgba(131, 165, 221, 0.22);
   background: rgba(255, 255, 255, 0.06);
 }
 
 .kg-legend-item span:nth-child(2),
-.kg-relation-list span {
+.kg-relation-list span,
+.kg-core-list span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .kg-legend-item strong,
-.kg-relation-list strong {
+.kg-relation-list strong,
+.kg-core-list strong {
   color: #f8fbff;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
