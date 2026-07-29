@@ -16,6 +16,12 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
+      path: '/graph',
+      name: 'GraphPreview',
+      component: () => import('../components/KnowledgeGraph.vue'),
+      meta: { requiresAuth: false }
+    },
+    {
       path: '/chat',
       name: 'Chat',
       component: () => import('../views/ChatView.vue'),
