@@ -3,12 +3,21 @@ import type { Source } from '../types/chat';
 
 // 流式输出块类型定义（建议同步添加到 types/chat.ts 中）
 export interface StreamChunk {
-  type: 'text' | 'sources' | 'done' | 'error' | 'vision' | 'fault_localization';
+  type: 'text' | 'sources' | 'done' | 'error' | 'vision' | 'fault_localization' | 'tool_start' | 'tool_end' | 'suggestions' | 'sop_steps' | 'sop_version' | 'token_usage';
   content?: string;
   sources?: Source[];
   error?: string;
   vision?: any;
   fault_localization?: any;
+  tool?: string;
+  label?: string;
+  output?: string;
+  items?: string[];
+  steps?: Array<{ title: string; desc: string; [key: string]: any }>;
+  sop?: { version: number; steps: Array<{ title: string; desc: string; [key: string]: any }>; updated_at?: string; created_at?: string };
+  sop_full?: string;
+  usage?: { prompt: number; completion: number; total: number };
+  result?: { step: number; status: string; message: string };
 }
 
 // 后端API基础地址
@@ -21,6 +30,7 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 export async function* sendChatMessageStream(
   message: string,
   sessionId: string,
+  username: string,
   deviceModel?: string,
   imageBase64?: string
 ): AsyncGenerator<StreamChunk, void, unknown> {
@@ -32,7 +42,7 @@ export async function* sendChatMessageStream(
     // 如果有图片，使用multipart/form-data接口
     if (imageBase64) {
       const formData = new FormData();
-      formData.append('user_id', 'user_001');
+      formData.append('user_id', username || 'user_001');
       formData.append('session_id', sessionId);
       formData.append('question', message);
       if (deviceModel) {
@@ -58,14 +68,14 @@ export async function* sendChatMessageStream(
       });
     } else {
       // 纯文本使用JSON接口
-      response = await fetch(`${API_BASE}/chat/stream`, {
+      response = await fetch(`${API_BASE}/chat/agent`, {
         method: 'POST',
         mode: 'cors',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: 'user_001',
+          user_id: username || 'user_001',
           session_id: sessionId,
           question: message,
           device_model: deviceModel,

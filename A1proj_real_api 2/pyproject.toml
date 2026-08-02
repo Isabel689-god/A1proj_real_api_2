@@ -27,6 +27,7 @@ dependencies = [
     "Pillow>=10.0",
     "sqlalchemy>=2.0",
     "pymysql>=1.1",
+    "neo4j>=5.20",
 ]
 
 [tool.setuptools.packages.find]
@@ -35,5 +36,4 @@ include = ["backend*"]
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
-
 

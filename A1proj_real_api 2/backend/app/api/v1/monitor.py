@@ -1,12 +1,79 @@
+import logging
+
 from fastapi import APIRouter, Depends
+from sqlalchemy import text
+
 from app.core.config import get_settings
+from app.core.llm_provider import test_llm_connection as run_llm_connection_test
+from app.db import get_session
 from app.knowledge.sync_service import KnowledgeSyncService
 from app.api.v1.knowledge import verify_admin
-import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 router = APIRouter(prefix="/monitor", tags=["系统监控"])
+START_TIME = time.time()
+logger = logging.getLogger(__name__)
+
+
+def _fmt_dt(ts: float | None) -> str:
+    if not ts:
+        return ""
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _fmt_uptime(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days:
+        return f"{days}天 {hours}小时 {minutes}分钟"
+    return f"{hours}小时 {minutes}分钟"
+
+
+def _latest_manual_change(settings, files: dict) -> float | None:
+    mtimes = []
+    for name in files:
+        for base in (Path(settings.DATA_DIR), Path(settings.DATA_DIR_FALLBACK)):
+            p = base / name
+            if p.exists():
+                mtimes.append(p.stat().st_mtime)
+                break
+    return max(mtimes) if mtimes else None
+
+
+def _check_database() -> dict:
+    started = time.perf_counter()
+    session = None
+    try:
+        session = get_session()
+        session.execute(text("SELECT 1"))
+        return {
+            "status": "healthy",
+            "label": "正常",
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+        }
+    except Exception as exc:
+        logger.exception("Database health check failed")
+        return {
+            "status": "connection_failed",
+            "label": "连接失败",
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+            "reason": "数据库无法连接或账号权限不足",
+        }
+    finally:
+        if session is not None:
+            session.close()
+
+
+def _safe_dir_status(path: Path) -> dict:
+    if not path.exists():
+        return {"status": "missing", "label": "缺失"}
+    if not path.is_dir():
+        return {"status": "invalid", "label": "路径异常"}
+    return {"status": "healthy", "label": "存在"}
 
 
 @router.get("/status", summary="获取系统整体运行状态")
@@ -24,30 +91,56 @@ def get_system_status(_=Depends(verify_admin)):
     dynamic_count = state.get("dynamic_count", 0)
     pdf_count = state.get("pdf_count", 0)
     docx_count = state.get("docx_count", 0)
+    physical_files = sync_service._list_manual_files()
+    physical_pdf_count = sum(1 for p in physical_files if p.suffix.lower() == ".pdf")
 
     # 文件路径状态
-    data_dir_exists = Path(settings.DATA_DIR).exists()
-    knowledge_dir_exists = Path(settings.KNOWLEDGE_DIR).exists()
+    data_dir_status = _safe_dir_status(Path(settings.DATA_DIR))
+    knowledge_dir_status = _safe_dir_status(Path(settings.KNOWLEDGE_DIR))
+    knowledge_file = Path(settings.KNOWLEDGE_DIR) / settings.KNOWLEDGE_JSON
+    graph_file = Path(settings.KNOWLEDGE_DIR) / settings.KNOWLEDGE_GRAPH_JSON
+
+    if dashvector_configured and doc_count > 0 and not state.get("errors"):
+        vector_index = {
+            "status": "healthy",
+            "label": "存在/正常",
+            "reason": "DashVector 已配置，知识库文档可用于检索",
+        }
+    elif dashvector_configured and doc_count > 0:
+        vector_index = {
+            "status": "unavailable",
+            "label": "需检查",
+            "reason": "同步状态存在错误：" + "；".join(state.get("errors", [])[:2]),
+        }
+    elif not dashvector_configured:
+        vector_index = {
+            "status": "missing",
+            "label": "未配置",
+            "reason": "DASHVECTOR_ENDPOINT 或 DASHVECTOR_API_KEY 未配置",
+        }
+    else:
+        vector_index = {
+            "status": "not_created",
+            "label": "未创建",
+            "reason": "知识库文档为空，尚未建立可用索引",
+        }
 
     # 大模型配置状态（仅校验配置，不实际调用避免消耗token）
     llm_configured = bool(settings.api_key and settings.api_key != "your_api_key_here")
     embedding_configured = llm_configured  # 共用同一套API
+    database_status = _check_database()
 
-    # 计算运行时长（近似值，从进程启动时间算）
-    try:
-        import psutil
-        process = psutil.Process(os.getpid())
-        uptime_seconds = time.time() - process.create_time()
-        uptime_str = f"{int(uptime_seconds // 3600)}小时 {int((uptime_seconds % 3600) // 60)}分钟"
-    except ImportError:
-        uptime_str = "未安装 psutil，无法获取运行时长"
+    uptime_seconds = time.time() - START_TIME
+    uptime_str = _fmt_uptime(uptime_seconds)
 
     return {
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "system": {
             "app_name": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "debug_mode": settings.DEBUG,
             "uptime": uptime_str,
+            "started_at": _fmt_dt(START_TIME),
             "data_dir": settings.DATA_DIR,
             "knowledge_dir": settings.KNOWLEDGE_DIR
         },
@@ -55,9 +148,13 @@ def get_system_status(_=Depends(verify_admin)):
             "total_documents": doc_count,
             "manual_documents": manual_count,
             "dynamic_documents": dynamic_count,
-            "pdf_files": pdf_count,
+            "pdf_files": physical_pdf_count,
+            "parsed_pdf_files": pdf_count,
             "docx_files": docx_count,
+            "document_chunks": doc_count,
             "dashvector_configured": dashvector_configured,
+            "vector_index": vector_index,
+            "vector_entries": doc_count if vector_index["status"] == "healthy" else 0,
             "last_sync_files": list(state.get("files", {}).keys()),
             "sync_errors": state.get("errors", [])
         },
@@ -67,14 +164,27 @@ def get_system_status(_=Depends(verify_admin)):
             "llm_model": settings.LLM_MODEL,
             "embedding_configured": embedding_configured,
             "embedding_model": settings.EMBEDDING_MODEL,
-            "data_dir_exists": data_dir_exists,
-            "knowledge_dir_exists": knowledge_dir_exists
+            "database": database_status,
+            "data_dir": data_dir_status,
+            "knowledge_dir": knowledge_dir_status,
+            "data_dir_exists": data_dir_status["status"] == "healthy",
+            "knowledge_dir_exists": knowledge_dir_status["status"] == "healthy",
         },
         "config": {
             "chunk_size": settings.CHUNK_SIZE,
             "chunk_overlap": settings.CHUNK_OVERLAP,
             "rag_top_k": settings.RAG_TOP_K,
             "allow_fallback": settings.LLM_ALLOW_FALLBACK
+        },
+        "operations": {
+            "last_sync_result": f"{doc_count} 条文档，{manual_count} 条手册切片，{dynamic_count} 条动态知识",
+            "last_sync_at": _fmt_dt(state.get("updated_at") or (knowledge_file.stat().st_mtime if knowledge_file.exists() else None)),
+            "last_manual_change": f"{len(state.get('files', {}))} 个手册文件已记录",
+            "last_manual_change_at": _fmt_dt(_latest_manual_change(settings, state.get("files", {}))),
+            "knowledge_file": "存在" if knowledge_file.exists() else "缺失",
+            "knowledge_file_updated_at": _fmt_dt(knowledge_file.stat().st_mtime if knowledge_file.exists() else None),
+            "graph_file": "存在" if graph_file.exists() else "缺失",
+            "graph_file_updated_at": _fmt_dt(graph_file.stat().st_mtime if graph_file.exists() else None),
         }
     }
 
@@ -82,19 +192,4 @@ def get_system_status(_=Depends(verify_admin)):
 @router.post("/test-llm", summary="测试大模型连通性")
 def test_llm_connection(_=Depends(verify_admin)):
     """实际发送一条极简请求测试大模型是否可用"""
-    try:
-        from langchain_core.prompts import ChatPromptTemplate
-        from app.langchain.rag_chain import get_llm
-        llm = get_llm()
-        prompt = ChatPromptTemplate.from_messages([("human", "ping")])
-        result = llm.invoke(prompt.invoke({})).content or ""
-        return {
-            "success": True,
-            "provider": f"langchain:{llm.model_name}",
-            "response": result[:50] + "..." if len(result) > 50 else result
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+    return run_llm_connection_test()

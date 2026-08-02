@@ -25,6 +25,30 @@
 
           <div v-html="renderMarkdown(msg.content)" class="gemini-markdown"></div>
 
+          <!-- 工具调用流程 -->
+          <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-flow">
+            <div class="tool-flow-title">🔧 工作流程</div>
+            <div
+              v-for="(tc, i) in msg.tool_calls"
+              :key="i"
+              class="tool-card"
+            >
+              <div class="tool-card-head" @click="tc._open = !tc._open">
+                <span class="tool-step-badge">{{ i + 1 }}</span>
+                <span class="tool-card-label">{{ tc.label || tc.name }}</span>
+                <span class="tool-card-arrow">{{ tc._open ? '▼' : '▶' }}</span>
+              </div>
+              <div v-if="tc._open" class="tool-card-body">
+                <pre class="tool-output">{{ tc.output }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- token 用量 -->
+          <div v-if="msg.token_usage" class="token-bar">
+            📊 Token: 输入 {{ msg.token_usage.prompt }} + 输出 {{ msg.token_usage.completion }} = {{ msg.token_usage.total }}
+          </div>
+
           <div v-if="msg.sources && msg.sources.length > 0" class="gemini-sources-zone">
             <el-collapse class="flat-collapse">
               <el-collapse-item
@@ -36,6 +60,21 @@
               </el-collapse-item>
             </el-collapse>
           </div>
+
+          <!-- 推荐下一步选项 -->
+          <div v-if="msg.suggestions && msg.suggestions.length > 0" class="suggestions-bar">
+            <div class="suggestions-label">💡 推荐下一步</div>
+            <div class="suggestions-chips">
+              <button
+                v-for="(s, i) in msg.suggestions"
+                :key="i"
+                class="suggestion-chip"
+                @click="$emit('suggestion-click', s)"
+              >
+                {{ i + 1 }}. {{ s }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -46,6 +85,10 @@
 import { ref, watch, nextTick } from 'vue';
 import { useChatStore } from '../stores/chat';
 import { renderMarkdown } from '../utils/chatMarkdown';
+
+defineEmits<{
+  'suggestion-click': [text: string]
+}>();
 
 const store = useChatStore();
 const listRef = ref<HTMLElement | null>(null);
@@ -95,10 +138,9 @@ watch(() => store.messages.length, () => {
 
 .ai-sparkle-avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  /* 柔和蓝紫渐变 */
-  background: linear-gradient(135deg, #5c558c, #4a6596);
-  color: white; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 10px rgba(92, 85, 140, 0.3);
+  background: var(--theme-gradient);
+  color: var(--text-inverse); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 12px rgba(0, 200, 180, 0.3);
 }
 
 .ai-sparkle-avatar svg {
@@ -110,7 +152,7 @@ watch(() => store.messages.length, () => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #374151;
+  background: var(--bg-card);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -138,7 +180,7 @@ watch(() => store.messages.length, () => {
 
 .rag-chip {
   font-size: 11px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-soft);
   border: 1px solid var(--border-glass);
   padding: 3px 8px; border-radius: 12px;
   color: var(--accent-cyan);
@@ -184,11 +226,163 @@ watch(() => store.messages.length, () => {
 }
 
 :deep(.gemini-markdown code) {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-soft) !important;
   color: var(--accent-cyan) !important;
   padding: 2px 5px;
   border-radius: 4px;
   font-size: 13px;
+}
+
+:deep(.gemini-markdown pre) {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+:deep(.gemini-markdown pre code) {
+  background: none !important;
+  padding: 0;
+  color: var(--text-primary) !important;
+}
+
+:deep(.gemini-markdown table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+:deep(.gemini-markdown th) {
+  background: var(--bg-hover);
+  color: var(--primary-light);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--primary-color);
+}
+:deep(.gemini-markdown td) {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-glass);
+  color: var(--text-primary);
+}
+:deep(.gemini-markdown tr:hover td) {
+  background: var(--bg-hover);
+}
+
+:deep(.gemini-markdown h3),
+:deep(.gemini-markdown .cn-heading) {
+  color: var(--primary-light) !important;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 16px 0 8px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+:deep(.gemini-markdown ul),
+:deep(.gemini-markdown ol) {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+:deep(.gemini-markdown li) {
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+:deep(.gemini-markdown blockquote) {
+  border-left: 3px solid var(--primary-color);
+  padding: 8px 14px;
+  margin: 10px 0;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-radius: 0 6px 6px 0;
+}
+
+:deep(.gemini-markdown hr) {
+  border: none;
+  border-top: 1px solid var(--border-glass);
+  margin: 14px 0;
+}
+
+:deep(.gemini-markdown a) {
+  color: var(--primary-light);
+  text-decoration: underline;
+}
+
+/* 工具调用流程 */
+.tool-flow {
+  margin: 12px 0;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  padding: 12px;
+}
+.tool-flow-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-light);
+  margin-bottom: 8px;
+}
+.tool-card {
+  margin-bottom: 4px;
+}
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.tool-card-head:hover {
+  background: var(--bg-hover);
+}
+.tool-step-badge {
+  width: 20px; height: 20px;
+  background: var(--primary-color);
+  color: var(--text-inverse);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tool-card-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.tool-card-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.tool-card-body {
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: var(--bg-soft);
+  border-radius: 6px;
+}
+.tool-output {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* token 用量 */
+.token-bar {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding: 4px 0;
 }
 
 /* 扁平化溯源组件 */
@@ -203,8 +397,8 @@ watch(() => store.messages.length, () => {
 }
 
 :deep(.flat-collapse .el-collapse-item__header) {
-  background-color: rgba(255, 255, 255, 0.03) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--bg-soft) !important;
+  border: 1px solid var(--border-glass) !important;
   color: var(--text-secondary) !important;
   font-size: 12px !important;
   border-radius: 8px;
@@ -220,7 +414,7 @@ watch(() => store.messages.length, () => {
 
 .flat-source-content {
   font-size: 13px; color: var(--text-secondary);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-card);
   padding: 12px; border-radius: 8px;
   border-left: 3px solid var(--primary-dark);
   line-height: 1.5;
@@ -229,5 +423,41 @@ watch(() => store.messages.length, () => {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.suggestions-bar {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+}
+.suggestions-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.suggestions-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.suggestion-chip {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.suggestion-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 </style>

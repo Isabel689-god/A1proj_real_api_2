@@ -9,17 +9,13 @@
         :default-active="activeMenu"
         class="admin-menu"
         background-color="transparent"
-        text-color="#94a3b8"
+        text-color="var(--text-secondary)"
         active-text-color="#83a5dd"
         @select="handleMenuSelect"
       >
         <el-menu-item index="users">
           <el-icon><User /></el-icon>
           <span>账号与权限管理</span>
-        </el-menu-item>
-        <el-menu-item index="knowledge">
-          <el-icon><Document /></el-icon>
-          <span>图谱与手册管理</span>
         </el-menu-item>
         <el-menu-item index="manuals">
           <el-icon><Folder /></el-icon>
@@ -38,6 +34,12 @@
           <span>系统运维监控</span>
         </el-menu-item>
         <div style="flex:1"></div>
+        <div style="padding: 10px;">
+          <button class="theme-toggle" @click="toggleTheme">
+            <span v-if="theme === 'dark'">☀️ 浅色模式</span>
+            <span v-else>🌙 深色模式</span>
+          </button>
+        </div>
         <el-menu-item index="logout" @click="doLogout">
           <el-icon><SwitchButton /></el-icon>
           <span>退出登录</span>
@@ -54,78 +56,96 @@
       <div v-if="activeMenu === 'users'" class="content-panel">
         <div class="glass-card inner-card">
           <div class="panel-toolbar card-header">
-            <h4>组织架构与账号管控</h4>
+            <h4>权限组配置</h4>
             <div class="toolbar-actions">
-              <el-button type="primary" size="small" @click="showAddUserDialog = true">添加新员工</el-button>
-              <el-button size="small" @click="loadUsers">刷新列表</el-button>
+              <el-button type="primary" size="small" @click="openGroupDialog()">新建权限组</el-button>
             </div>
           </div>
-          <div class="card-list-container" v-loading="loadingUsers">
-            <div v-for="user in userList" :key="user.username" class="glass-card data-card user-card">
-              <div class="card-info-group">
-                <div class="info-item col-username">
-                  <span class="info-label">登录账号</span>
-                  <span class="info-value username-text">{{ user.username }}</span>
-                </div>
-                <div class="info-item col-role">
-                  <span class="info-label">基准角色</span>
-                  <el-tag :type="getRoleTagType(user.role)" effect="dark">{{ getRoleName(user.role) }}</el-tag>
-                </div>
-                <div class="info-item col-status">
-                  <span class="info-label">在线状态</span>
-                  <el-tag :type="user.is_online ? 'success' : 'info'" size="small" effect="dark">
-                    {{ user.is_online ? '在线' : '离线' }}
-                  </el-tag>
-                </div>
-                <div class="info-item col-perms">
-                  <span class="info-label">动态权限</span>
-                  <div class="perm-tag-group">
-                    <el-tag
-                      v-for="p in user.permissions"
-                      :key="p"
-                      size="small"
-                      effect="plain"
-                      :closable="user.role !== 'admin' && !isBasePermission(user.role, p)"
-                      @close="removePermission(user, p)"
-                    >
-                      {{ getPermName(p) }}
-                    </el-tag>
-                    <el-dropdown trigger="click" @command="(cmd) => addPermission(user, cmd)" v-if="user.role !== 'admin'">
-                      <el-button size="small" circle>+</el-button>
-                      <template #dropdown>
-                        <el-dropdown-menu>
-                          <el-dropdown-item v-for="p in availablePerms" :key="p.key" :command="p.key" :disabled="user.permissions.includes(p.key)">
-                            {{ p.label }}
-                          </el-dropdown-item>
-                        </el-dropdown-menu>
-                      </template>
-                    </el-dropdown>
+          <div class="card-list-container">
+            <div v-for="(group, name) in permGroups" :key="name" class="glass-card data-card" style="padding:16px;margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div style="flex:1;">
+                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <strong style="font-size:15px;color:var(--text-primary);">{{ name }}</strong>
+                    <el-tag size="small" type="info">{{ group.permissions?.length || 0 }} 项权限</el-tag>
+                    <el-tag size="small" type="warning">{{ group.members?.length || 0 }} 名成员</el-tag>
+                  </div>
+                  <p style="color:var(--text-muted);font-size:13px;margin:0 0 10px 0;">{{ group.description }}</p>
+                  <!-- 成员列表（每人一行） -->
+                  <div style="margin-bottom:8px;">
+                    <div v-for="m in (group.members || [])" :key="m" class="member-row">
+                      <span class="member-name" style="min-width:120px;">{{ m }}</span>
+                      <el-tag :type="userStatusMap[m] ? 'success' : 'info'" size="small" effect="dark" style="margin:0 12px;">
+                        {{ userStatusMap[m] ? '在线' : '离线' }}
+                      </el-tag>
+                      <div class="perm-tag-group" style="flex:1;">
+                        <el-tag
+                          v-for="p in (userPermMap[m] || [])" :key="p" size="small" effect="plain"
+                          :closable="name !== '管理组' && userExtraPermMap[m]?.includes(p)"
+                          @close="removeExtraPerm(name, m, p)"
+                        >{{ getPermName(p) }}</el-tag>
+                        <el-dropdown v-if="name !== '管理组'" trigger="click" @command="(cmd: string) => addExtraPerm(name, m, cmd)">
+                          <el-button size="small" circle>+</el-button>
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item v-for="p in availablePerms" :key="p.key" :command="p.key" :disabled="(userPermMap[m]||[]).includes(p.key)">{{ p.label }}</el-dropdown-item>
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
+                      </div>
+                      <el-button size="small" type="danger" link @click="removeMember(name, m)">删除</el-button>
+                    </div>
+                    <!-- 添加成员 -->
+                    <div v-if="addMemberGroup[name]" class="member-row" style="gap:4px;">
+                      <el-input v-model="addMemberName[name]" size="small" style="width:100px;" placeholder="账号" @keyup.enter="doAddMember(name)" />
+                      <el-input v-model="addMemberPwd[name]" size="small" style="width:70px;" placeholder="密码" @keyup.enter="doAddMember(name)" />
+                      <el-button size="small" type="primary" @click="doAddMember(name)">确定</el-button>
+                      <el-button size="small" @click="cancelAddMember(name)">取消</el-button>
+                    </div>
+                    <el-button v-else size="small" @click="startAddMember(name)" style="margin-top:4px;">+ 添加成员</el-button>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <span style="font-size:12px;color:var(--text-muted);">组权限：</span>
+                    <el-tag v-for="p in group.permissions" :key="p" size="small" effect="plain">{{ getPermName(p) }}</el-tag>
                   </div>
                 </div>
-              </div>
-              <div class="card-actions">
-                <el-popconfirm
-                  v-if="user.role !== 'admin'"
-                  title="确定删除此账号？"
-                  @confirm="deleteUser(user.username)"
-                >
-                  <template #reference>
-                    <el-button size="small" type="danger" link>删除/注销</el-button>
-                  </template>
-                </el-popconfirm>
+                <div style="display:flex;gap:8px;flex-shrink:0;">
+                  <el-button size="small" @click="openGroupDialog(name)">编辑</el-button>
+                  <el-popconfirm title="确定删除此权限组？" @confirm="deleteGroup(name)">
+                    <template #reference>
+                      <el-button size="small" type="danger" link>删除</el-button>
+                    </template>
+                  </el-popconfirm>
+                </div>
               </div>
             </div>
-            <el-empty v-if="userList.length === 0 && !loadingUsers" description="暂无账号数据" />
+            <el-empty v-if="Object.keys(permGroups).length === 0" description="暂无权限组" />
           </div>
         </div>
       </div>
 
-      <!-- 知识图谱面板 -->
-      <div v-if="activeMenu === 'knowledge'" class="content-panel knowledge-panel">
-        <div class="glass-card inner-card graph-area">
-          <KnowledgeGraph class="admin-graph-container" />
-        </div>
-      </div>
+      <!-- 权限组编辑对话框 -->
+      <el-dialog v-model="showGroupDialog" :title="editingGroupName ? '编辑权限组' : '新建权限组'" width="560px" destroy-on-close>
+        <el-form :model="groupForm" label-width="100px">
+          <el-form-item label="组名称">
+            <el-input v-model="groupForm.name" :disabled="!!editingGroupName" placeholder="如：高级技师组" />
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input v-model="groupForm.description" placeholder="简述该组的职责范围" />
+          </el-form-item>
+          <el-form-item label="权限列表">
+            <el-checkbox-group v-model="groupForm.permissions">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <el-checkbox v-for="p in availablePerms" :key="p.key" :label="p.key" :value="p.key">{{ p.label }}</el-checkbox>
+              </div>
+            </el-checkbox-group>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showGroupDialog = false">取消</el-button>
+          <el-button type="primary" @click="saveGroup">{{ editingGroupName ? '保存修改' : '创建' }}</el-button>
+        </template>
+      </el-dialog>
 
       <!-- 手册文件管理 -->
       <div v-if="activeMenu === 'manuals'" class="content-panel">
@@ -133,6 +153,11 @@
           <div class="panel-toolbar card-header">
             <h4>手册文件管理</h4>
             <div class="toolbar-actions">
+              <el-input v-model="manualSearch" size="small" placeholder="🔍 搜索手册..." style="width:180px;" clearable />
+              <el-select v-model="manualCategory" size="small" placeholder="分类" style="width:160px;" clearable>
+                <el-option label="机床设备维修手册" value="机床设备维修手册" />
+                <el-option label="总装设备检修手册" value="总装设备检修手册" />
+              </el-select>
               <el-upload
                 :show-file-list="false"
                 :before-upload="handleBeforeUpload"
@@ -146,7 +171,7 @@
             </div>
           </div>
           <div class="card-list-container" v-loading="loadingManuals">
-            <div v-for="item in manualList" :key="item.filename" class="glass-card data-card">
+            <div v-for="item in filteredManualList" :key="item.filename" class="glass-card data-card">
               <div class="card-info-group">
                 <div class="info-item col-filename">
                   <span class="info-label">文件名</span>
@@ -155,6 +180,10 @@
                 <div class="info-item col-type">
                   <span class="info-label">类型</span>
                   <el-tag :type="item.type === 'PDF' ? 'primary' : 'success'" size="small">{{ item.type }}</el-tag>
+                </div>
+                <div class="info-item col-category">
+                  <span class="info-label">分类</span>
+                  <el-tag size="small" effect="plain">{{ item.category || '未分类' }}</el-tag>
                 </div>
                 <div class="info-item col-size">
                   <span class="info-label">大小</span>
@@ -170,6 +199,8 @@
                 </div>
               </div>
               <div class="card-actions">
+                <el-button size="small" type="primary" link @click="viewManual(item.filename)">查看内容</el-button>
+                <el-button v-if="item.type === 'PDF'" size="small" type="success" link @click="viewManual(item.filename, true)">PDF 预览</el-button>
                 <el-button size="small" type="primary" link @click="syncSingle(item.filename)">单独同步</el-button>
                 <el-popconfirm title="确定删除该手册文件吗？" @confirm="deleteManual(item.filename)">
                   <template #reference>
@@ -178,7 +209,7 @@
                 </el-popconfirm>
               </div>
             </div>
-            <el-empty v-if="manualList.length === 0 && !loadingManuals" description="暂无手册文件" />
+            <el-empty v-if="filteredManualList.length === 0 && !loadingManuals" description="暂无手册文件" />
           </div>
         </div>
       </div>
@@ -219,6 +250,7 @@
                 </div>
               </div>
               <div class="card-actions">
+                <el-button size="small" type="primary" link @click="viewManual(req.filename)">查看内容</el-button>
                 <el-button size="small" type="success" link v-if="req.status === 'pending'" @click="reviewRequest(req, true)">
                   通过
                 </el-button>
@@ -245,7 +277,7 @@
             <div v-for="item in store.globalReports" :key="item.orderId" class="glass-card data-card">
               <div class="card-info-group">
                 <div class="info-item col-order-id">
-                  <span class="info-label">工单编号</span>
+                  <span class="info-label">对话记录编号</span>
                   <span class="info-value">{{ item.orderId }}</span>
                 </div>
                 <div class="info-item col-time">
@@ -288,12 +320,18 @@
             <div class="card-title">知识库统计</div>
             <div class="monitor-item"><span class="label">总文档数</span><span class="value highlight">{{ systemStatus.knowledge_base?.total_documents || 0 }}</span></div>
             <div class="monitor-item"><span class="label">手册文档</span><span class="value">{{ systemStatus.knowledge_base?.manual_documents || 0 }}</span></div>
-            <div class="monitor-item"><span class="label">向量索引</span><el-tag :type="systemStatus.knowledge_base?.faiss_index_exists ? 'success' : 'danger'" size="small">{{ systemStatus.knowledge_base?.faiss_index_exists ? '正常' : '缺失' }}</el-tag></div>
+            <div class="monitor-item"><span class="label">PDF 原文件</span><span class="value">{{ systemStatus.knowledge_base?.pdf_files || 0 }}</span></div>
+            <div class="monitor-item"><span class="label">文档切片数</span><span class="value">{{ systemStatus.knowledge_base?.document_chunks || 0 }}</span></div>
+            <div class="monitor-item"><span class="label">向量索引</span><el-tag :type="getVectorStatusType(systemStatus.knowledge_base?.vector_index?.status)" size="small">{{ systemStatus.knowledge_base?.vector_index?.label || '未知' }}</el-tag></div>
+            <div class="monitor-item"><span class="label">索引条目</span><span class="value">{{ systemStatus.knowledge_base?.vector_entries || 0 }}</span></div>
+            <div class="monitor-item"><span class="label">更新时间</span><span class="value">{{ systemStatus.updated_at || '-' }}</span></div>
           </div>
           <div class="glass-card monitor-card">
             <div class="card-title">服务连通性</div>
             <div class="monitor-item"><span class="label">模型类型</span><span class="value">{{ systemStatus.services?.llm_model || '-' }}</span></div>
+            <div class="monitor-item"><span class="label">数据库</span><el-tag :type="getVectorStatusType(systemStatus.services?.database?.status)" size="small">{{ systemStatus.services?.database?.label || '未知' }}</el-tag></div>
             <div class="monitor-item"><span class="label">数据目录</span><el-tag :type="systemStatus.services?.data_dir_exists ? 'success' : 'danger'" size="small">{{ systemStatus.services?.data_dir_exists ? '存在' : '缺失' }}</el-tag></div>
+            <div class="monitor-item"><span class="label">知识目录</span><el-tag :type="systemStatus.services?.knowledge_dir_exists ? 'success' : 'danger'" size="small">{{ systemStatus.services?.knowledge_dir_exists ? '存在' : '缺失' }}</el-tag></div>
           </div>
         </div>
         <div class="glass-card inner-card" style="margin-top: 15px">
@@ -308,8 +346,19 @@
             <el-tag :type="llmTestResult.success ? 'success' : 'danger'" effect="dark">
               {{ llmTestResult.success ? '连接成功' : '连接失败' }}
             </el-tag>
-            <span v-if="llmTestResult.success" class="result-text">响应: {{ llmTestResult.response }}</span>
-            <span v-else class="result-text error">错误: {{ llmTestResult.error }}</span>
+            <span v-if="llmTestResult.success" class="result-text">模型: {{ llmTestResult.model }} · 延迟: {{ llmTestResult.latency_ms }}ms · 响应: {{ llmTestResult.response }}</span>
+            <span v-else class="result-text error">状态: {{ llmTestResult.error_type || llmTestResult.status }} · {{ llmTestResult.error }}</span>
+          </div>
+          <div v-else-if="systemStatus.monitor_error" class="test-result error-panel">
+            <el-tag type="danger" effect="dark">连接异常</el-tag>
+            <span class="result-text error">{{ systemStatus.monitor_error }}</span>
+          </div>
+          <div class="operation-grid">
+            <div v-for="item in systemOperations" :key="item.label" class="operation-item">
+              <span class="operation-label">{{ item.label }}</span>
+              <span class="operation-value">{{ item.value }}</span>
+              <span class="operation-time">{{ item.time || '无时间戳' }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -321,62 +370,231 @@
         <el-empty v-if="!selectedChatHistory || selectedChatHistory.length === 0" description="该工单无对话记录" />
         <div v-for="msg in selectedChatHistory" :key="msg.id" :class="['history-msg-item', msg.role]">
           <div class="msg-sender">{{ msg.role === 'user' ? '操作员:' : '系统AI中枢:' }}</div>
-          <div class="msg-text">{{ msg.content }}</div>
+          <div class="msg-text" v-html="renderMarkdown(msg.content)"></div>
         </div>
       </div>
     </el-dialog>
 
-    <!-- 添加用户弹窗 -->
-    <el-dialog v-model="showAddUserDialog" title="添加新员工账户" width="400px">
-      <el-form :model="newUserForm" label-width="80px">
-        <el-form-item label="登录账号">
-          <el-input v-model="newUserForm.username"></el-input>
-        </el-form-item>
-        <el-form-item label="初始密码">
-          <el-input v-model="newUserForm.password" show-password></el-input>
-        </el-form-item>
-        <el-form-item label="基础角色">
-          <el-select v-model="newUserForm.role" style="width: 100%;">
-            <el-option label="实习账号 (仅基础问答与查阅)" value="intern" />
-            <el-option label="普通员工 (支持提报记录与申请)" value="employee" />
-            <el-option label="高级职工 (全权限，可审核与管理图谱)" value="senior" />
-            <el-option label="管理端" value="admin" />
-          </el-select>
-        </el-form-item>
-      </el-form>
+    <!-- 手册内容查看弹窗 -->
+    <el-dialog v-model="showManualDialog" :title="`手册内容: ${viewingManual}`" width="900px" destroy-on-close top="3vh" @opened="initManualSearch" @closed="cleanupManualPreview">
+      <el-alert
+        v-if="manualDiagnosticMessage"
+        :title="manualDiagnosticMessage"
+        :type="manualDiagnosticType"
+        show-icon
+        :closable="false"
+        style="margin-bottom:10px;"
+      />
+      <iframe v-if="manualPdfUrl" class="pdf-preview-frame" :src="manualPdfUrl"></iframe>
+      <!-- 搜索栏 -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;" v-if="manualContent.length > 0 && !manualPdfUrl">
+        <el-input v-model="manualSearchQuery" size="small" placeholder="🔍 在手册中搜索..." style="width:260px;" clearable @input="doManualSearch" @keydown.enter="nextMatch">
+          <template #suffix>
+            <span v-if="manualSearchQuery && manualMatchCount > 0" style="font-size:11px;color:var(--text-muted);white-space:nowrap;">{{ manualMatchIndex }}/{{ manualMatchCount }}</span>
+          </template>
+        </el-input>
+        <el-button size="small" :disabled="manualMatchCount === 0" @click="prevMatch">◀</el-button>
+        <el-button size="small" :disabled="manualMatchCount === 0" @click="nextMatch">▶</el-button>
+        <span v-if="manualSearchQuery" style="font-size:12px;color:var(--text-muted);">{{ manualMatchCount > 0 ? `找到 ${manualMatchCount} 处匹配` : '未找到' }}</span>
+      </div>
+      <!-- 内容区 -->
+      <div v-if="!manualPdfUrl" ref="manualContentRef" style="max-height:60vh;overflow-y:auto;white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--text-primary);background:var(--bg-dark);padding:16px;border-radius:8px;" v-loading="loadingManualContent" v-html="manualHighlighted">
+      </div>
+    </el-dialog>
+
+    <!-- 同步前选择分类弹窗 -->
+    <el-dialog v-model="showSyncCategoryDialog" title="选择分类后同步" width="400px">
+      <p style="margin-bottom:12px;color:var(--text-secondary);">「{{ syncTargetFile }}」尚未同步，请先选择所属分类：</p>
+      <el-select v-model="syncCategory" size="small" style="width:100%;">
+        <el-option label="机床设备维修手册" value="机床设备维修手册" />
+        <el-option label="总装设备检修手册" value="总装设备检修手册" />
+      </el-select>
       <template #footer>
-        <el-button @click="showAddUserDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitAddUser">确认添加</el-button>
+        <el-button @click="showSyncCategoryDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmSyncCategory">确认并同步</el-button>
       </template>
     </el-dialog>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
-import { DataAnalysis, Document, List, SwitchButton, Folder, Monitor, User, DocumentChecked, View } from '@element-plus/icons-vue';
+import { renderMarkdown } from '../utils/chatMarkdown';
+import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import KnowledgeGraph from '../components/KnowledgeGraph.vue';
 
 const router = useRouter();
 const store = useChatStore();
+const theme = inject<any>('theme');
+const toggleTheme = inject<() => void>('toggleTheme', () => {});
 const activeMenu = ref('users');
 const showHistoryDialog = ref(false);
 const selectedChatHistory = ref<any[]>([]);
 const selectedOrder = ref('');
 
-// 用户管理状态
-const userList = ref<any[]>([]);
-const loadingUsers = ref(false);
-const showAddUserDialog = ref(false);
-const newUserForm = ref({ username: '', password: '', role: 'intern' });
-
 // 手册申请审核
 const manualRequests = ref<any[]>([]);
 const loadingRequests = ref(false);
 const auditStatusFilter = ref('');
+
+// ═══════════ 权限组管理 ═══════════
+const permGroups = ref<Record<string, any>>({});
+const userStatusMap = ref<Record<string, boolean>>({});
+const userPermMap = ref<Record<string, string[]>>({});
+const userExtraPermMap = ref<Record<string, string[]>>({});
+const showGroupDialog = ref(false);
+const editingGroupName = ref<string | null>(null);
+const groupForm = ref({ name: '', description: '', permissions: [] as string[] });
+
+const loadGroups = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/user/groups`, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+    const data = await res.json();
+    permGroups.value = data.groups || {};
+  } catch (e) { console.error('loadGroups failed', e); }
+};
+
+const loadUsers = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/user/list`, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+    const data = await res.json();
+    for (const u of (data.users || [])) {
+      userStatusMap.value[u.username] = u.is_online;
+      userPermMap.value[u.username] = u.permissions || [];
+      userExtraPermMap.value[u.username] = u.extra_permissions || [];
+    }
+  } catch (e) { console.error('loadUsers failed', e); }
+};
+
+const addExtraPerm = async (group: string, username: string, perm: string) => {
+  const current = userExtraPermMap.value[username] || [];
+  const newPerms = [...current, perm];
+  try {
+    const res = await fetch(`${API_BASE}/user/${encodeURIComponent(username)}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify({ extra_permissions: newPerms }),
+    });
+    if (!res.ok) throw new Error();
+    ElMessage.success(`已为 ${username} 追加权限`);
+    await loadUsers();
+  } catch { ElMessage.error('操作失败'); }
+};
+
+const removeExtraPerm = async (group: string, username: string, perm: string) => {
+  const current = userExtraPermMap.value[username] || [];
+  const newPerms = current.filter((p: string) => p !== perm);
+  try {
+    const res = await fetch(`${API_BASE}/user/${encodeURIComponent(username)}/permissions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify({ extra_permissions: newPerms }),
+    });
+    if (!res.ok) throw new Error();
+    ElMessage.success(`已移除 ${username} 的权限`);
+    await loadUsers();
+  } catch { ElMessage.error('操作失败'); }
+};
+
+const openGroupDialog = (name?: string) => {
+  editingGroupName.value = name || null;
+  if (name && permGroups.value[name]) {
+    const g = permGroups.value[name];
+    groupForm.value = { name, description: g.description, permissions: [...g.permissions] };
+  } else {
+    groupForm.value = { name: '', description: '', permissions: [] };
+  }
+  showGroupDialog.value = true;
+};
+
+const saveGroup = async () => {
+  const { name, description, permissions } = groupForm.value;
+  if (!name) return ElMessage.warning('请输入权限组名称');
+  try {
+    const method = editingGroupName.value ? 'PUT' : 'POST';
+    const url = editingGroupName.value
+      ? `${API_BASE}/user/groups/${encodeURIComponent(editingGroupName.value)}`
+      : `${API_BASE}/user/groups`;
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify({ name, description, permissions }),
+    });
+    if (!res.ok) throw new Error();
+    ElMessage.success(editingGroupName.value ? '权限组已更新' : '权限组已创建');
+    showGroupDialog.value = false;
+    await loadGroups();
+  } catch { ElMessage.error('操作失败'); }
+};
+
+const deleteGroup = async (name: string) => {
+  try {
+    const res = await fetch(`${API_BASE}/user/groups/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Token': ADMIN_TOKEN },
+    });
+    if (!res.ok) throw new Error();
+    ElMessage.success('权限组已删除');
+    await loadGroups();
+  } catch { ElMessage.error('删除失败'); }
+};
+
+// 成员管理状态
+const addMemberGroup = ref<Record<string, boolean>>({});
+const addMemberName = ref<Record<string, string>>({});
+const addMemberPwd = ref<Record<string, string>>({});
+
+const startAddMember = (group: string) => {
+  addMemberGroup.value[group] = true;
+  addMemberName.value[group] = '';
+  addMemberPwd.value[group] = '123';
+};
+const cancelAddMember = (group: string) => { addMemberGroup.value[group] = false; };
+
+const doAddMember = async (group: string) => {
+  const username = addMemberName.value[group]?.trim();
+  const password = addMemberPwd.value[group] || '123';
+  if (!username) return ElMessage.warning('请输入账号');
+  try {
+    // 如果用户已存在，改为切换其权限组
+    let res = await fetch(`${API_BASE}/user/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify({ username, password, group }),
+    });
+    if (!res.ok) {
+      // 用户已存在，尝试切换组
+      res = await fetch(`${API_BASE}/user/${encodeURIComponent(username)}/group`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+        body: JSON.stringify({ group }),
+      });
+    }
+    if (!res.ok) throw new Error();
+    ElMessage.success(`已将 ${username} 加入 ${group}`);
+    cancelAddMember(group);
+    await loadUsers();
+    await loadGroups();
+    // 强制刷新确保 UI 更新
+    setTimeout(() => loadGroups(), 300);
+  } catch { ElMessage.error('操作失败'); }
+};
+
+const removeMember = async (group: string, username: string) => {
+  try {
+    const res = await fetch(`${API_BASE}/user/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Token': ADMIN_TOKEN },
+    });
+    if (!res.ok) throw new Error();
+    ElMessage.success(`已移除 ${username}`);
+    await loadUsers();
+    await loadGroups();
+    setTimeout(() => loadGroups(), 300);
+  } catch { ElMessage.error('移除失败'); }
+};
 
 // 权限字典
 const availablePerms = [
@@ -390,45 +608,122 @@ const availablePerms = [
 ];
 
 const getPermName = (key: string) => availablePerms.find(p => p.key === key)?.label || key;
-const getRoleName = (role: string) => {
-  const map:any = { admin: '系统管理员', senior: '高级职工', employee: '普通员工', intern: '实习生' };
-  return map[role] || role;
-};
-const getRoleTagType = (role: string) => {
-  const map:any = { admin: 'danger', senior: 'warning', employee: 'success', intern: 'info' };
-  return map[role] || '';
-};
-
-// 检查是否为角色的基础权限（不可删除）
-const isBasePermission = (role: string, perm: string) => {
-   const baseMap:any = {
-      intern: ['chat', 'view_graph'],
-      employee: ['chat', 'view_graph', 'submit_report', 'request_upload'],
-      senior: ['chat', 'view_graph', 'submit_report', 'direct_upload', 'update_graph', 'audit_uploads'],
-   };
-   if(role === 'admin') return true;
-   return baseMap[role]?.includes(perm);
-};
 
 // 手册管理状态
 const manualList = ref<any[]>([]);
+const manualSearch = ref('');
+const manualCategory = ref('');
+const filteredManualList = computed(() => {
+  let list = manualList.value;
+  const q = manualSearch.value.trim().toLowerCase();
+  if (q) list = list.filter(m => m.filename.toLowerCase().includes(q));
+  if (manualCategory.value) list = list.filter(m => m.category === manualCategory.value);
+  return list;
+});
 const loadingManuals = ref(false);
+const showManualDialog = ref(false);
+const viewingManual = ref('');
+const manualContent = ref('');
+const manualPdfUrl = ref('');
+const manualDiagnosticMessage = ref('');
+const manualDiagnosticType = ref<'success' | 'warning' | 'error' | 'info'>('info');
+const loadingManualContent = ref(false);
+const showSyncCategoryDialog = ref(false);
+const syncTargetFile = ref('');
+const syncCategory = ref('机床设备维修手册');
+const manualSearchQuery = ref('');
+const manualMatchCount = ref(0);
+const manualMatchIndex = ref(0);
+const manualHighlighted = ref('');
+const manualContentRef = ref<HTMLElement | null>(null);
+let manualSearchPositions: number[] = [];
+let manualRawText = '';
+
+const initManualSearch = () => {
+  manualSearchQuery.value = '';
+  manualMatchCount.value = 0;
+  manualMatchIndex.value = 0;
+  manualHighlighted.value = escapeHtml(manualContent.value);
+  manualRawText = manualContent.value;
+  manualSearchPositions = [];
+};
+
+const escapeHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const doManualSearch = () => {
+  const q = manualSearchQuery.value.trim().toLowerCase();
+  manualMatchIndex.value = 0;
+  manualSearchPositions = [];
+  if (!q) {
+    manualHighlighted.value = escapeHtml(manualRawText);
+    manualMatchCount.value = 0;
+    return;
+  }
+  const lower = manualRawText.toLowerCase();
+  let pos = 0;
+  while ((pos = lower.indexOf(q, pos)) !== -1) {
+    manualSearchPositions.push(pos);
+    pos += q.length;
+  }
+  manualMatchCount.value = manualSearchPositions.length;
+  if (manualSearchPositions.length > 0) {
+    manualMatchIndex.value = 1;
+    highlightCurrent();
+  } else {
+    manualHighlighted.value = escapeHtml(manualRawText);
+  }
+};
+
+const highlightCurrent = () => {
+  if (manualSearchPositions.length === 0) {
+    manualHighlighted.value = escapeHtml(manualRawText);
+    return;
+  }
+  const q = manualSearchQuery.value;
+  const idx = manualMatchIndex.value - 1;
+  if (idx < 0 || idx >= manualSearchPositions.length) return;
+  const pos = manualSearchPositions[idx];
+  const before = escapeHtml(manualRawText.slice(0, pos));
+  const match = '<mark style="background:#00b4a0;color:#fff;padding:1px 3px;border-radius:3px;">' + escapeHtml(manualRawText.slice(pos, pos + q.length)) + '</mark>';
+  const after = escapeHtml(manualRawText.slice(pos + q.length));
+  manualHighlighted.value = before + match + after;
+  // scroll to match
+  setTimeout(() => {
+    const el = manualContentRef.value;
+    if (el) {
+      const mark = el.querySelector('mark');
+      if (mark) mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, 50);
+};
+
+const prevMatch = () => {
+  if (manualSearchPositions.length === 0) return;
+  manualMatchIndex.value = manualMatchIndex.value <= 1 ? manualSearchPositions.length : manualMatchIndex.value - 1;
+  highlightCurrent();
+};
+
+const nextMatch = () => {
+  if (manualSearchPositions.length === 0) return;
+  manualMatchIndex.value = manualMatchIndex.value >= manualSearchPositions.length ? 1 : manualMatchIndex.value + 1;
+  highlightCurrent();
+};
 
 // 系统监控状态
 const systemStatus = ref<any>({});
 const llmTestResult = ref<any>(null);
+const lastGoodSystemStatus = ref<any>({});
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 const ADMIN_TOKEN = 'admin-change-me';
 
 const pageTitle = computed(() => {
   const map: Record<string, string> = {
-    users: '系统组织架构与人员访问控制 (RBAC)',
-    knowledge: '知识库与图谱构建 (Knowledge Graph)',
+    users: '组织架构与权限管控 (RBAC & Permission Groups)',
     manuals: '手册文件在线管理 (Manual Management)',
     upload_audit: '手册录入申请审核',
     records: '全局业务闭环审计 (Audit Logs)',
-    monitor: '系统运维监控面板 (System Monitor)'
+    monitor: '系统运维监控面板 (System Monitor)',
   };
   return map[activeMenu.value] || '管理中枢';
 });
@@ -458,101 +753,29 @@ const getStatusText = (status: string) => {
   return map[status] || status;
 };
 
+const getVectorStatusType = (status: string) => {
+  if (status === 'healthy' || status === 'exists') return 'success';
+  if (status === 'missing' || status === 'unavailable' || status === 'connection_failed') return 'danger';
+  return 'warning';
+};
+
+const systemOperations = computed(() => {
+  const operations = systemStatus.value.operations || {};
+  return [
+    { label: '最近知识库同步', value: operations.last_sync_result || '暂无同步记录', time: operations.last_sync_at },
+    { label: '最近手册变更', value: operations.last_manual_change || '暂无变更记录', time: operations.last_manual_change_at },
+    { label: '知识文件状态', value: operations.knowledge_file || '未检测', time: operations.knowledge_file_updated_at },
+    { label: '图谱文件状态', value: operations.graph_file || '未检测', time: operations.graph_file_updated_at },
+  ];
+});
+
 const handleMenuSelect = (index: string) => {
   if (index === 'logout') return;
   activeMenu.value = index;
-  if (index === 'users') loadUsers();
+  if (index === 'users') { loadGroups(); loadUsers(); }
   if (index === 'manuals') loadManualList();
   if (index === 'monitor') loadSystemStatus();
   if (index === 'upload_audit') loadManualRequests();
-  if (index === 'intern_logs') loadInternLogs();
-};
-
-// ==================== 用户管理核心逻辑 ====================
-const loadUsers = async () => {
-  loadingUsers.value = true;
-  try {
-    const res = await fetch(`${API_BASE}/user/list`, {
-      headers: { 'X-Admin-Token': ADMIN_TOKEN }
-    });
-    const data = await res.json();
-    userList.value = data.users;
-  } catch (e: any) {
-    ElMessage.error('加载用户列表失败');
-  } finally {
-    loadingUsers.value = false;
-  }
-};
-
-const submitAddUser = async () => {
-  if(!newUserForm.value.username || !newUserForm.value.password) {
-    return ElMessage.warning('账号密码为必填项');
-  }
-  try {
-    const res = await fetch(`${API_BASE}/user/add`, {
-      method: 'POST',
-      headers: {
-        'X-Admin-Token': ADMIN_TOKEN,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(newUserForm.value)
-    });
-    if(res.ok) {
-       ElMessage.success('账号添加成功');
-       showAddUserDialog.value = false;
-       newUserForm.value = { username: '', password: '', role: 'intern' };
-       loadUsers();
-    } else {
-       const err = await res.json();
-       ElMessage.error(err.detail || '添加失败，账号可能已存在');
-    }
-  } catch(e) {
-    ElMessage.error('网络请求失败');
-  }
-};
-
-const deleteUser = async (username: string) => {
-  try {
-    const res = await fetch(`${API_BASE}/user/${username}`, {
-      method: 'DELETE',
-      headers: { 'X-Admin-Token': ADMIN_TOKEN }
-    });
-    if(res.ok) {
-      ElMessage.success('账号删除成功');
-      loadUsers();
-    }
-  } catch(e) {
-    ElMessage.error('删除失败');
-  }
-};
-
-const addPermission = async (row: any, perm: string) => {
-   const newPerms = [...row.extra_permissions, perm];
-   await updatePerms(row.username, newPerms);
-};
-
-const removePermission = async (row: any, perm: string) => {
-   const newPerms = row.extra_permissions.filter((p:string) => p !== perm);
-   await updatePerms(row.username, newPerms);
-};
-
-const updatePerms = async (username: string, extra_permissions: string[]) => {
-   try {
-    const res = await fetch(`${API_BASE}/user/${username}/permissions`, {
-      method: 'PUT',
-      headers: {
-        'X-Admin-Token': ADMIN_TOKEN,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ extra_permissions })
-    });
-    if(res.ok) {
-       ElMessage.success('权限更新成功');
-       loadUsers();
-    }
-   } catch(e) {
-     ElMessage.error('权限更新失败');
-   }
 };
 
 // ==================== 手册申请审核 ====================
@@ -596,19 +819,6 @@ const reviewRequest = async (req: any, approve: boolean) => {
   }
 };
 
-// ==================== 实习生记录 ====================
-const loadInternLogs = () => {
-  // 读取本地全局报告，展示所有工单记录
-  internReports.value = store.globalReports;
-  ElMessage.info('记录已刷新');
-};
-
-const viewInternDetails = (row: any) => {
-  selectedOrder.value = row.orderId;
-  selectedChatHistory.value = row.messages || [];
-  showHistoryDialog.value = true;
-};
-
 // ==================== 工单审计 ====================
 const viewDetails = (row: any) => {
   selectedOrder.value = row.orderId;
@@ -646,6 +856,62 @@ const loadManualList = async () => {
   }
 };
 
+const cleanupManualPreview = () => {
+  if (manualPdfUrl.value) URL.revokeObjectURL(manualPdfUrl.value);
+  manualPdfUrl.value = '';
+  manualDiagnosticMessage.value = '';
+};
+
+const viewManual = async (filename: string, preferPdfPreview = false) => {
+  cleanupManualPreview();
+  viewingManual.value = filename;
+  showManualDialog.value = true;
+  loadingManualContent.value = true;
+  manualContent.value = '';
+  try {
+    const isPdf = filename.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+      const diagRes = await fetch(`${API_BASE}/knowledge/manuals/${encodeURIComponent(filename)}/diagnostics`, {
+        headers: { 'X-Admin-Token': ADMIN_TOKEN }
+      });
+      const diag = await diagRes.json();
+      manualDiagnosticMessage.value = diag.message || '';
+      manualDiagnosticType.value = diag.preview_status === 'available'
+        ? (diag.parse_status === 'scanned' ? 'warning' : 'success')
+        : 'error';
+      if (preferPdfPreview || diag.parse_status !== 'parsed') {
+        const rawRes = await fetch(`${API_BASE}/knowledge/manuals/${encodeURIComponent(filename)}/raw`, {
+          headers: { 'X-Admin-Token': ADMIN_TOKEN }
+        });
+        if (!rawRes.ok) {
+          const rawErr = await rawRes.json().catch(() => ({}));
+          throw new Error(rawErr.detail || diag.message || 'PDF 下载失败');
+        }
+        const blob = await rawRes.blob();
+        manualPdfUrl.value = URL.createObjectURL(blob);
+        manualContent.value = '';
+        manualHighlighted.value = '';
+        manualRawText = '';
+        return;
+      }
+    }
+    const res = await fetch(`${API_BASE}/knowledge/manuals/${encodeURIComponent(filename)}/content`, {
+      headers: { 'X-Admin-Token': ADMIN_TOKEN }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '加载失败');
+    manualContent.value = data.content || '[无内容]';
+    manualHighlighted.value = escapeHtml(manualContent.value);
+    manualRawText = manualContent.value;
+  } catch (e: any) {
+    manualContent.value = `[加载失败] ${e?.message || '无法读取该手册内容'}`;
+    manualHighlighted.value = escapeHtml(manualContent.value);
+    manualRawText = manualContent.value;
+  } finally {
+    loadingManualContent.value = false;
+  }
+};
+
 const handleBeforeUpload = (file: File) => {
   const isLt50M = file.size / 1024 / 1024 < 50;
   if (!isLt50M) {
@@ -678,32 +944,66 @@ const deleteManual = async (filename: string) => {
 };
 
 const syncSingle = async (filename: string) => {
+  const item = manualList.value.find((m: any) => m.filename === filename);
+  if (!item) return;
+  // 未同步的手册需先选择分类
+  if (item.status === '待同步') {
+    syncTargetFile.value = filename;
+    showSyncCategoryDialog.value = true;
+    return;
+  }
+  doSyncSingle(filename);
+};
+
+const doSyncSingle = async (filename: string) => {
   const idx = manualList.value.findIndex((m: any) => m.filename === filename);
   if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '同步中' };
 
-  // 后台发请求，不等结果，3 秒后一律显示"已同步"
-  fetch(`${API_BASE}/knowledge/sync/${encodeURIComponent(filename)}`, {
-    method: 'POST',
-    headers: { 'X-Admin-Token': ADMIN_TOKEN }
-  }).catch(() => {});
-
-  await new Promise(r => setTimeout(r, 3000));
-  if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '已同步' };
-  ElMessage.success(`${filename} 已同步`);
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/sync/${encodeURIComponent(filename)}`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': ADMIN_TOKEN }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '同步失败');
+    ElMessage.success(`${filename} 已同步，新增 ${data.added_docs || 0} 条切片`);
+    await loadManualList();
+  } catch (e: any) {
+    if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '同步失败' };
+    ElMessage.error(e?.message || '同步失败');
+  }
 };
 
-const syncAllManuals = () => {
+const confirmSyncCategory = async () => {
+  const filename = syncTargetFile.value;
+  if (!filename) return;
+  // 将分类写入后端（通过 update category 接口）
+  try {
+    await fetch(`${API_BASE}/knowledge/manuals/${encodeURIComponent(filename)}/category`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify({ category: syncCategory.value }),
+    });
+  } catch { /* ignore */ }
+  showSyncCategoryDialog.value = false;
+  doSyncSingle(filename);
+};
+
+const syncAllManuals = async () => {
   manualList.value = manualList.value.map((m: any) => ({ ...m, status: '同步中' }));
-
-  fetch(`${API_BASE}/knowledge/sync`, {
-    method: 'POST',
-    headers: { 'X-Admin-Token': ADMIN_TOKEN }
-  }).catch(() => {});
-
-  setTimeout(() => {
-    manualList.value = manualList.value.map((m: any) => ({ ...m, status: '已同步' }));
-    ElMessage.success('全量同步完成');
-  }, 3000);
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/sync`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': ADMIN_TOKEN }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '全量同步失败');
+    ElMessage.success(`全量同步完成，共 ${data.result?.document_count || 0} 条文档`);
+    await loadManualList();
+  } catch (e: any) {
+    ElMessage.error(e?.message || '全量同步失败');
+    await loadManualList();
+  }
 };
 
 // ==================== 系统监控 ====================
@@ -713,9 +1013,14 @@ const loadSystemStatus = async () => {
       headers: { 'X-Admin-Token': ADMIN_TOKEN }
     });
     if (!res.ok) throw new Error('获取系统状态失败');
-    systemStatus.value = await res.json();
+    const data = await res.json();
+    systemStatus.value = data;
+    lastGoodSystemStatus.value = data;
   } catch (e: any) {
-    systemStatus.value = {};
+    systemStatus.value = {
+      ...lastGoodSystemStatus.value,
+      monitor_error: e?.message || '系统状态接口连接失败',
+    };
   }
 };
 
@@ -750,7 +1055,7 @@ onMounted(() => {
 <style scoped>
 .admin-layout {
   height: 100vh;
-  background: #0a1020;
+  background: var(--bg-darker);
   overflow: hidden;
 }
 .admin-sidebar {
@@ -758,19 +1063,23 @@ onMounted(() => {
   border-radius: 12px;
   display: flex;
   flex-direction: column;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
 }
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 25px 20px;
-  color: #60a5fa;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  color: #00c8b4;
+  border-bottom: 1px solid var(--border-glass);
 }
 .sidebar-logo h2 {
   margin: 0;
   font-size: 18px;
-  color: #fff;
+  background: linear-gradient(135deg, #00c8b4, #38bdf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .admin-menu {
   border-right: none;
@@ -784,8 +1093,9 @@ onMounted(() => {
   margin: 5px 10px;
 }
 .admin-menu .el-menu-item.is-active {
-  background: rgba(107, 137, 196, 0.15);
-  border: 1px solid rgba(131, 165, 221, 0.2);
+  background: rgba(0, 200, 180, 0.12);
+  border: 1px solid rgba(0, 200, 180, 0.2);
+  color: #00c8b4 !important;
 }
 .admin-main {
   padding: 15px 15px 15px 0;
@@ -804,7 +1114,7 @@ onMounted(() => {
 }
 .header-bar h3 {
   margin: 0;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 500;
 }
@@ -814,11 +1124,11 @@ onMounted(() => {
   overflow-y: auto;
 }
 .glass-card {
-  background: rgba(15, 23, 42, 0.75);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(131, 165, 221, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
 }
 .inner-card {
   position: relative;
@@ -850,7 +1160,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--border-glass);
   padding-bottom: 12px;
   margin-bottom: 20px;
   flex-shrink: 0;
@@ -859,7 +1169,7 @@ onMounted(() => {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 .toolbar-actions {
   display: flex;
@@ -900,6 +1210,22 @@ onMounted(() => {
   border-color: rgba(131, 165, 221, 0.25);
   transform: translateY(-1px);
 }
+.member-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+}
+.member-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  font-size: 13px;
+  gap: 6px;
+}
 .card-info-group {
   display: flex;
   align-items: center;
@@ -915,7 +1241,7 @@ onMounted(() => {
 }
 .info-label {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-secondary);
   text-align: left;
   line-height: 1;
 }
@@ -924,7 +1250,7 @@ onMounted(() => {
   font-weight: 500;
   text-align: left;
   line-height: 1.2;
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 .username-text {
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', ui-monospace, Consolas, monospace;
@@ -966,6 +1292,10 @@ onMounted(() => {
 }
 .col-type {
   flex: 0 0 80px;
+  padding-right: 24px;
+}
+.col-category {
+  flex: 0 0 150px;
   padding-right: 24px;
 }
 .col-size {
@@ -1032,8 +1362,8 @@ onMounted(() => {
 .card-title {
   font-size: 15px;
   font-weight: 600;
-  color: #f8fafc;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-glass);
   padding-bottom: 8px;
   margin-bottom: 16px;
 }
@@ -1045,12 +1375,12 @@ onMounted(() => {
   text-align: left;
 }
 .monitor-item .label {
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 13px;
   text-align: left;
 }
 .monitor-item .value {
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-weight: 600;
   text-align: left;
 }
@@ -1060,26 +1390,65 @@ onMounted(() => {
   color: #60a5fa;
 }
 .test-result {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
   border-radius: 8px;
   padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-bottom: 14px;
+}
+.error-panel {
+  border-color: rgba(239, 68, 68, 0.35);
 }
 .result-text {
   font-size: 13px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 .result-text.error {
-  color: #ef4444;
+  color: var(--danger);
+}
+.pdf-preview-frame {
+  width: 100%;
+  height: 72vh;
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  background: var(--bg-dark);
+}
+.operation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.operation-item {
+  min-height: 74px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.operation-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.operation-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.operation-time {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .admin-history-viewer {
   max-height: 450px;
   overflow-y: auto;
   padding: 15px;
-  background: #f8fafc;
+  background: var(--bg-dark);
   border-radius: 8px;
 }
 .history-msg-item {
@@ -1088,22 +1457,22 @@ onMounted(() => {
   border-radius: 8px;
 }
 .history-msg-item.user {
-  background: #e0f2fe;
-  border: 1px solid #bae6fd;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
 }
 .history-msg-item.assistant {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
 }
 .msg-sender {
   font-size: 12px;
   font-weight: bold;
-  color: #0284c7;
+  color: var(--primary-color);
   margin-bottom: 6px;
 }
 .msg-text {
   font-size: 14px;
-  color: #1e293b;
+  color: var(--text-primary);
   line-height: 1.6;
 }
 @media (max-width: 1400px) {

@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
@@ -11,6 +13,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
+from fastapi.responses import FileResponse
 
 from app.core.config import get_settings
 from app.db import init_db, get_session
@@ -41,6 +44,130 @@ def _rebuild_index():
     from app.api.v1.chat import reload
 
     reload()
+
+
+def _manual_search_dirs() -> list[Path]:
+    settings = get_settings()
+    svc = KnowledgeSyncService()
+    return list(svc._manual_dirs()) + [Path(settings.DATA_DIR) / "_pending"]
+
+
+def _resolve_manual_path(filename: str) -> tuple[str, Path | None]:
+    safe_name = Path(filename).name
+    if safe_name != filename:
+        raise HTTPException(status_code=400, detail="文件名不合法")
+    for d in _manual_search_dirs():
+        fp = d / safe_name
+        if fp.exists():
+            return safe_name, fp
+    return safe_name, None
+
+
+def _manual_doc_counts() -> dict[str, int]:
+    svc = KnowledgeSyncService()
+    try:
+        docs = svc.load_all_documents()
+    except Exception:
+        docs = []
+    counts: dict[str, int] = {}
+    for doc in docs:
+        source = doc.get("source", "")
+        if source:
+            counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
+def _diagnose_pdf(filename: str) -> dict:
+    """Layered PDF diagnostics used by preview and content extraction."""
+    safe_name, file_path = _resolve_manual_path(filename)
+    svc = KnowledgeSyncService()
+    state = svc._load_sync_state()
+    file_hashes = state.get("files", {})
+    doc_count = _manual_doc_counts().get(safe_name, 0)
+    record = {
+        "filename": safe_name,
+        "record_exists": safe_name in file_hashes or doc_count > 0,
+        "record_md5": file_hashes.get(safe_name),
+        "doc_count": doc_count,
+        "storage_path": None,
+    }
+    result = {
+        "filename": safe_name,
+        "file_exists": False,
+        "file_size": 0,
+        "file_hash": "",
+        "is_pdf_header": False,
+        "is_encrypted": False,
+        "is_scanned": False,
+        "page_count": 0,
+        "preview_status": "missing",
+        "parse_status": "not_started",
+        "error_type": "file_missing",
+        "message": "原 PDF 文件不存在",
+        "record": record,
+        "last_checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if file_path is None:
+        if record["record_exists"]:
+            result["message"] = "文件记录存在，但存储文件缺失"
+        return result
+    record["storage_path"] = str(file_path)
+    result["file_exists"] = True
+
+    if not file_path.is_file():
+        result.update({"preview_status": "invalid_path", "error_type": "path_error", "message": "文件路径配置错误"})
+        return result
+    try:
+        size = file_path.stat().st_size
+    except OSError:
+        result.update({"preview_status": "permission_denied", "error_type": "permission_denied", "message": "文件没有读取权限"})
+        return result
+    result["file_size"] = size
+    if size <= 0:
+        result.update({"preview_status": "empty_file", "error_type": "empty_file", "message": "文件大小为 0"})
+        return result
+    try:
+        with file_path.open("rb") as fh:
+            header = fh.read(8)
+    except OSError:
+        result.update({"preview_status": "permission_denied", "error_type": "permission_denied", "message": "文件没有读取权限"})
+        return result
+    if not header.startswith(b"%PDF-"):
+        result.update({"preview_status": "format_mismatch", "error_type": "format_mismatch", "message": "文件格式与扩展名不一致"})
+        return result
+
+    result["is_pdf_header"] = True
+    try:
+        result["file_hash"] = file_md5(file_path)
+    except Exception:
+        result["file_hash"] = ""
+
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(file_path))
+        result["is_encrypted"] = bool(reader.is_encrypted)
+        if reader.is_encrypted:
+            result.update({"preview_status": "encrypted", "parse_status": "encrypted", "error_type": "encrypted", "message": "PDF 已加密，需要密码"})
+            return result
+        page_count = len(reader.pages)
+        result["page_count"] = page_count
+        sample_text = []
+        for page in reader.pages[: min(page_count, 5)]:
+            try:
+                text = page.extract_text() or ""
+            except Exception:
+                text = ""
+            if text.strip():
+                sample_text.append(text.strip())
+        result["preview_status"] = "available"
+        if "".join(sample_text).strip():
+            result.update({"parse_status": "parsed", "error_type": "", "message": "PDF 可预览，已检测到文字层"})
+        else:
+            result.update({"parse_status": "scanned", "is_scanned": True, "error_type": "scanned_pdf", "message": "PDF 可预览，但未检测到文字层，可能为扫描件"})
+    except Exception as exc:
+        result.update({"preview_status": "damaged", "parse_status": "parse_error", "error_type": "damaged_or_parse_error", "message": f"PDF 内容损坏或解析服务异常: {str(exc)[:120]}"})
+    return result
 
 
 # ==================== MySQL 知识图谱 ====================
@@ -162,7 +289,34 @@ def trigger_single_extraction(doc_id: str):
     }
 
 
-# ==================== 旧 JSON 图谱（兼容） ====================
+# ==================== Neo4j AuraDB 知识图谱（直连云实例） ====================
+
+from app.services.neo4j_service import Neo4jService as _Neo4jService
+
+
+@router.get("/neo4j-graph/node/{eid}")
+def get_neo4j_node_detail(eid: str):
+    """Neo4j AuraDB 单个节点详情。"""
+    svc = _Neo4jService()
+    try:
+        detail = svc.get_node_detail(eid)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"节点 {eid} 不存在")
+        return {"code": 200, "data": detail}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Neo4j AuraDB 查询失败: {exc}")
+
+
+@router.get("/neo4j-graph")
+def get_neo4j_graph(entity_type: str | None = None):
+    """Neo4j AuraDB 全量图谱（ECharts 格式）。entity_type 可选: device/component/fault/fault_cause/solution。"""
+    svc = _Neo4jService()
+    try:
+        return svc.get_full_graph(entity_type)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Neo4j AuraDB 查询失败: {exc}")
 
 
 @router.get("/json-graph")
@@ -208,9 +362,15 @@ def list_manual_files():
 
     files = []
     manual_files = sync_service._list_manual_files()
+    cat_overrides = _load_categories()
     for p in manual_files:
         size_kb = round(p.stat().st_size / 1024)
         file_type = p.suffix.lower().replace(".", "").upper()
+        pdf_status = _diagnose_pdf(p.name) if p.suffix.lower() == ".pdf" else {}
+        category = cat_overrides.get(p.name) or (
+            "总装设备检修手册" if "报警代码" in p.name
+            else ("机床设备维修手册" if p.name in file_hashes else "未分类")
+        )
         files.append(
             {
                 "filename": p.name,
@@ -219,10 +379,36 @@ def list_manual_files():
                 "md5": file_hashes.get(p.name, "未同步"),
                 "doc_count": doc_count_by_source.get(p.name, 0),
                 "status": "已同步" if p.name in file_hashes else "待同步",
+                "category": category,
+                "preview_status": pdf_status.get("preview_status", "available"),
+                "parse_status": pdf_status.get("parse_status", "parsed" if doc_count_by_source.get(p.name, 0) else "not_started"),
+                "is_scanned": pdf_status.get("is_scanned", False),
+                "is_encrypted": pdf_status.get("is_encrypted", False),
+                "diagnostic_message": pdf_status.get("message", ""),
             }
         )
     return sorted(files, key=lambda x: x["filename"])
 
+# 分类持久化
+_categories_path = Path(get_settings().KNOWLEDGE_DIR) / "manual_categories.json"
+
+def _load_categories() -> dict:
+    if _categories_path.exists():
+        try:
+            return json.loads(_categories_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def _save_categories(data: dict):
+    _categories_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@router.put("/manuals/{filename}/category", dependencies=[Depends(verify_admin)])
+def update_manual_category(filename: str, body: dict = Body(...)):
+    cats = _load_categories()
+    cats[filename] = body.get("category", "")
+    _save_categories(cats)
+    return {"success": True}
 
 @router.post(
     "/manuals/upload", summary="上传手册文件", dependencies=[Depends(verify_admin)]
@@ -250,28 +436,144 @@ async def upload_manual(file: UploadFile = File(...), auto_sync: bool = False):
     }
 
 
+@router.get("/manuals/{filename:path}/content", dependencies=[Depends(verify_admin)])
+def get_manual_content(filename: str):
+    """读取手册文件内容（支持 PDF/DOCX/TXT）。"""
+    safe_name, file_path = _resolve_manual_path(filename)
+    if file_path is None:
+        raise HTTPException(status_code=404, detail=f"文件 {safe_name} 不存在或尚未入库")
+
+    suffix = file_path.suffix.lower()
+    content = ""
+    try:
+        if suffix == ".txt":
+            content = file_path.read_text(encoding="utf-8")[:50000]
+        elif suffix == ".pdf":
+            diagnosis = _diagnose_pdf(safe_name)
+            if diagnosis["preview_status"] in {"missing", "invalid_path", "permission_denied", "empty_file", "format_mismatch", "encrypted", "damaged"}:
+                raise HTTPException(status_code=422, detail=diagnosis["message"])
+            content = ""
+            for lib in ("pypdf", "fitz"):
+                try:
+                    if lib == "pypdf":
+                        from pypdf import PdfReader
+                        reader = PdfReader(str(file_path))
+                        pages = [p.extract_text() or "" for p in reader.pages]
+                    else:
+                        import fitz
+                        doc = fitz.open(str(file_path))
+                        pages = [p.get_text() for p in doc]
+                    content = "\n\n".join(pages)[:50000]
+                    if len(content.strip()) > 50:
+                        break
+                except Exception:
+                    continue
+            if not content.strip():
+                content = "[PDF 可以查看，但未检测到文字层，可能为扫描件；原文件预览不受影响。]"
+        elif suffix in (".doc", ".docx"):
+            try:
+                from docx import Document
+                doc = Document(str(file_path))
+                content = "\n".join(p.text for p in doc.paragraphs)[:50000]
+            except Exception:
+                content = "[无法解析 DOCX 文件，请确认格式正确]"
+        elif suffix == ".xlsx":
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(str(file_path), read_only=True, data_only=True)
+                rows = []
+                for ws in wb.worksheets[:3]:
+                    rows.append(f"【工作表：{ws.title}】")
+                    for row in ws.iter_rows(max_row=120, values_only=True):
+                        values = ["" if v is None else str(v) for v in row]
+                        if any(v.strip() for v in values):
+                            rows.append(" | ".join(values))
+                    rows.append("")
+                content = "\n".join(rows)[:50000] or "[Excel 文件为空]"
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Excel 解析失败: {exc}")
+        elif suffix == ".xls":
+            try:
+                import xlrd
+                book = xlrd.open_workbook(str(file_path))
+                rows = []
+                for sheet in book.sheets()[:3]:
+                    rows.append(f"【工作表：{sheet.name}】")
+                    for r in range(min(sheet.nrows, 120)):
+                        values = [str(sheet.cell_value(r, c)).strip() for c in range(sheet.ncols)]
+                        if any(values):
+                            rows.append(" | ".join(values))
+                    rows.append("")
+                content = "\n".join(rows)[:50000] or "[Excel 文件为空]"
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Excel 解析失败: {exc}")
+        else:
+            content = f"[不支持预览 .{suffix} 格式]"
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail=f"读取文件失败: {e}")
+
+    return {"filename": safe_name, "content": content, "size_kb": round(file_path.stat().st_size / 1024)}
+
+
+@router.get("/manuals/{filename:path}/diagnostics", dependencies=[Depends(verify_admin)])
+def get_manual_diagnostics(filename: str):
+    safe_name = Path(filename).name
+    if Path(safe_name).suffix.lower() != ".pdf":
+        _, file_path = _resolve_manual_path(filename)
+        if file_path is None:
+            raise HTTPException(status_code=404, detail=f"文件 {safe_name} 不存在或尚未入库")
+        return {
+            "filename": safe_name,
+            "file_exists": True,
+            "file_size": file_path.stat().st_size,
+            "preview_status": "available",
+            "parse_status": "not_pdf",
+            "message": "非 PDF 文件，使用文本预览",
+            "last_checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    return _diagnose_pdf(filename)
+
+
+@router.get("/manuals/{filename:path}/raw", dependencies=[Depends(verify_admin)])
+def get_manual_raw(filename: str):
+    safe_name, file_path = _resolve_manual_path(filename)
+    if file_path is None:
+        raise HTTPException(status_code=404, detail=f"文件 {safe_name} 不存在或尚未入库")
+    if file_path.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=415, detail="当前原文件预览仅支持 PDF")
+    diagnosis = _diagnose_pdf(safe_name)
+    if diagnosis["preview_status"] in {"missing", "invalid_path", "permission_denied", "empty_file", "format_mismatch"}:
+        raise HTTPException(status_code=422, detail=diagnosis["message"])
+    return FileResponse(
+        path=str(file_path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(safe_name)}"},
+    )
+
+
 @router.delete("/manuals/{filename}", dependencies=[Depends(verify_admin)])
 def delete_manual(filename: str):
     """删除手册文件及对应知识库文档。"""
-    settings = get_settings()
-    data_dir = Path(settings.DATA_DIR)
-    file_path = data_dir / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"文件 {filename} 不存在")
+    svc = KnowledgeSyncService()
+    safe_name = Path(filename).name
+    file_path = next((d / safe_name for d in svc._manual_dirs() if (d / safe_name).exists()), None)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"文件 {safe_name} 不存在")
     file_path.unlink()
     # 从知识库中移除该文件的所有文档
-    svc = KnowledgeSyncService()
     docs = svc.load_all_documents()
     before = len(docs)
-    docs = [d for d in docs if d.get("source") != filename]
+    docs = [d for d in docs if d.get("source") != safe_name]
     after = len(docs)
     svc.knowledge_path.write_text(json.dumps(docs, ensure_ascii=False, indent=2), encoding="utf-8")
     # 更新同步状态
     state = svc._load_sync_state()
-    if filename in state.get("files", {}):
-        del state["files"][filename]
+    if safe_name in state.get("files", {}):
+        del state["files"][safe_name]
         svc._save_sync_state(state)
-    return {"success": True, "filename": filename, "removed_docs": before - after}
+    return {"success": True, "filename": safe_name, "removed_docs": before - after}
 
 
 @router.post("/sync", dependencies=[Depends(verify_admin)])
@@ -286,28 +588,32 @@ def trigger_sync():
 @router.post("/sync/{filename}", dependencies=[Depends(verify_admin)])
 def trigger_single_sync(filename: str):
     """单独同步一个手册文件。"""
-    settings = get_settings()
-    file_path = Path(settings.DATA_DIR) / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"文件 {filename} 不存在")
+    safe_name = Path(filename).name
     svc = KnowledgeSyncService()
+    file_path = next((d / safe_name for d in svc._manual_dirs() if (d / safe_name).exists()), None)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"文件 {safe_name} 不存在")
     try:
         from app.knowledge.document_parser import parse_manual_file, assign_ids
         raw_docs = parse_manual_file(file_path)
-        docs = assign_ids(raw_docs, filename)
+        docs = assign_ids(raw_docs, safe_name)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"文件解析失败: {str(e)[:200]}")
     # 移除旧条目 + 合并新条目
     all_docs = svc.load_all_documents()
-    all_docs = [d for d in all_docs if d.get("source") != filename]
+    all_docs = [d for d in all_docs if d.get("source") != safe_name]
     all_docs.extend(docs)
     svc.knowledge_path.write_text(json.dumps(all_docs, ensure_ascii=False, indent=2), encoding="utf-8")
     # 更新同步状态
     state = svc._load_sync_state()
-    state["files"][filename] = file_md5(file_path)
+    state["files"][safe_name] = file_md5(file_path)
+    state["document_count"] = len(all_docs)
+    state["manual_count"] = len([d for d in all_docs if d.get("source")])
+    import time
+    state["updated_at"] = time.time()
     svc._save_sync_state(state)
     _rebuild_index()
-    return {"success": True, "filename": filename, "added_docs": len(docs),
+    return {"success": True, "filename": safe_name, "added_docs": len(docs),
             "total_docs": len(all_docs)}
 
 

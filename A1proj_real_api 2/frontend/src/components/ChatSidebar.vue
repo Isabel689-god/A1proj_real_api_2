@@ -38,22 +38,6 @@
       </button>
 
       <button
-        v-if="store.hasPermission('view_graph')"
-        @click="showGraphDialog = true"
-        :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
-        title="探索知识图谱"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
-          <circle cx="18" cy="5" r="3"></circle>
-          <circle cx="6" cy="12" r="3"></circle>
-          <circle cx="18" cy="19" r="3"></circle>
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-        </svg>
-        <span v-if="!isCollapsed">探索知识图谱</span>
-      </button>
-
-      <button
         v-if="store.hasPermission('request_upload')"
         @click="showRequestDialog = true"
         :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
@@ -100,10 +84,34 @@
         <div v-if="!isCollapsed" class="session-info">
           <span class="session-title-text">{{ session.title }}</span>
         </div>
+        <button
+          v-if="!isCollapsed && store.sessions.length > 1"
+          class="session-delete-btn"
+          @click.stop="store.deleteSession(session.id)"
+          title="删除此对话"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
     </div>
 
     <div class="sidebar-footer" v-if="!isCollapsed">
+      <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">
+        <svg v-if="theme === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <span>{{ theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
+      </button>
       <button class="new-session-pill-btn logout-btn" @click="doLogout" title="退出系统">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -113,12 +121,6 @@
         <span>退出登录</span>
       </button>
     </div>
-
-    <el-dialog v-model="showGraphDialog" title="设备检修知识图谱网络" width="85%" top="5vh" destroy-on-close>
-      <div class="graph-dialog-body">
-        <KnowledgeGraph />
-      </div>
-    </el-dialog>
 
     <el-dialog v-model="showRequestDialog" title="申请录入新手册" width="480px" destroy-on-close>
       <el-form :model="requestForm" label-width="100px">
@@ -141,7 +143,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showDirectUploadDialog" title="直接上传设备手册" width="480px" destroy-on-close>
+    <el-dialog v-model="showDirectUploadDialog" title="直接上传设备手册" width="680px" destroy-on-close>
       <el-form :model="uploadForm" label-width="100px">
         <el-form-item label="手册文件">
           <el-upload :auto-upload="false" :show-file-list="true" :on-change="handleUploadFileChange" :limit="1" accept=".pdf,.docx">
@@ -162,11 +164,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { ElMessage } from 'element-plus';
-import KnowledgeGraph from './KnowledgeGraph.vue'; // 导入知识图谱组件
+
+const theme = inject<any>('theme', ref('dark'))
+const toggleTheme = inject<() => void>('toggleTheme', () => {})
 
 const router = useRouter();
 const store = useChatStore();
@@ -249,7 +253,6 @@ const equipmentOptions = [
   },
 ];
 
-const showGraphDialog = ref(false); // 图谱弹窗控制
 const showRequestDialog = ref(false);
 const showDirectUploadDialog = ref(false);
 const submittingRequest = ref(false);
@@ -264,10 +267,7 @@ const ADMIN_TOKEN = 'admin-change-me';
 const toggleSidebar = () => isCollapsed.value = !isCollapsed.value;
 
 const createNewSession = () => {
-  const newId = 'session_' + Date.now();
-  if (!store.sessions) store.sessions = [];
-  store.sessions.unshift({ id: newId, title: '新检修任务', messages: [] });
-  if (store.activateSession) store.activateSession(newId);
+  store.createNewSession();
 };
 
 const doLogout = async () => {
@@ -337,11 +337,11 @@ const submitDirectUpload = async () => {
 .chat-sidebar {
   width: 260px;
   height: 100vh;
-  background: #0f172a;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
+  border-right: 1px solid var(--border-glass);
   display: flex;
   flex-direction: column;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.35s ease;
   overflow: hidden;
   flex-shrink: 0;
   z-index: 100;
@@ -354,11 +354,12 @@ const submitDirectUpload = async () => {
   padding: 16px;
   gap: 12px;
   height: 60px;
+  border-bottom: 1px solid var(--border-glass);
 }
 .icon-btn {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -366,122 +367,51 @@ const submitDirectUpload = async () => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  transition: background 0.2s, color 0.2s;
+  transition: all 0.2s;
 }
-.icon-btn:hover { background: rgba(255, 255, 255, 0.06); color: #f1f5f9; }
+.icon-btn:hover { background: var(--bg-hover); color: var(--primary-color); }
 .toggle-menu-btn svg { width: 20px; height: 20px; }
-.system-title { font-size: 14px; font-weight: 600; color: #f1f5f9; white-space: nowrap; }
-
-.equipment-selector {
-  padding: 0 14px 12px;
-}
-.selector-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 6px;
-}
-.equipment-select {
-  width: 100%;
-}
-:deep(.equipment-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-:deep(.equipment-select .el-input__wrapper:hover) {
-  border-color: rgba(14, 165, 233, 0.4);
-}
-:deep(.equipment-select .el-input__inner) {
-  color: #e2e8f0;
-}
-:deep(.equipment-select .el-select__placeholder) {
-  color: #64748b;
+.system-title {
+  font-size: 14px; font-weight: 600;
+  background: linear-gradient(90deg, #00c8b4, #38bdf8);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
 }
 
 .equipment-selector {
-  padding: 0 14px 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-glass);
 }
 .selector-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
 }
-.equipment-select {
-  width: 100%;
-}
-:deep(.equipment-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+:deep(.equipment-cascader .el-input__wrapper) {
+  background: var(--bg-soft);
+  border: 1px solid var(--border-glass);
   box-shadow: none;
+  border-radius: 8px;
 }
-:deep(.equipment-select .el-input__wrapper:hover) {
-  border-color: rgba(14, 165, 233, 0.4);
+:deep(.equipment-cascader .el-input__wrapper:hover) {
+  border-color: rgba(0, 200, 180, 0.3);
 }
-:deep(.equipment-select .el-input__inner) {
-  color: #e2e8f0;
-}
-:deep(.equipment-select .el-select__placeholder) {
-  color: #64748b;
-}
-
-.equipment-selector {
-  padding: 0 14px 12px;
-}
-.selector-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 6px;
-}
-.equipment-select {
-  width: 100%;
-}
-:deep(.equipment-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-:deep(.equipment-select .el-input__wrapper:hover) {
-  border-color: rgba(14, 165, 233, 0.4);
-}
-:deep(.equipment-select .el-input__inner) {
-  color: #e2e8f0;
-}
-:deep(.equipment-select .el-select__placeholder) {
-  color: #64748b;
-}
-
-.equipment-selector {
-  padding: 0 14px 12px;
-}
-.selector-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 6px;
-}
-.equipment-select {
-  width: 100%;
-}
-:deep(.equipment-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-:deep(.equipment-select .el-input__wrapper:hover) {
-  border-color: rgba(14, 165, 233, 0.4);
-}
-:deep(.equipment-select .el-input__inner) {
-  color: #e2e8f0;
-}
-:deep(.equipment-select .el-select__placeholder) {
-  color: #64748b;
+:deep(.equipment-cascader .el-input__inner) {
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
 .action-zone {
-  padding: 8px 14px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-glass);
 }
-.is-collapsed .action-zone { align-items: center; padding: 8px 0 16px; }
+.is-collapsed .action-zone { align-items: center; padding: 12px 0; }
 
 .new-session-pill-btn {
   display: flex;
@@ -489,77 +419,98 @@ const submitDirectUpload = async () => {
   gap: 10px;
   width: 100%;
   height: 40px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #e2e8f0;
+  border-radius: 10px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
   padding: 0 16px;
-  transition: all 0.2s;
+  transition: all 0.25s;
 }
 .new-session-pill-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(14, 165, 233, 0.4);
+  background: var(--bg-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 .new-session-circle-btn {
-  width: 40px;
-  height: 40px;
+  width: 40px; height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #e2e8f0;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  transition: all 0.25s;
 }
-.new-session-circle-btn:hover { background: rgba(255, 255, 255, 0.08); color: #0ea5e9; }
-.mt-8 { margin-top: 8px; }
+.new-session-circle-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
 
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px;
+  padding: 8px;
 }
-.list-section-title { font-size: 11px; font-weight: bold; color: #64748b; padding: 8px 12px; }
+.list-section-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 8px 4px;
+}
 .session-item {
   display: flex;
   align-items: center;
+  gap: 10px;
   padding: 10px 12px;
-  border-radius: 16px;
+  border-radius: 8px;
   cursor: pointer;
-  gap: 12px;
-  margin-bottom: 4px;
-  color: #94a3b8;
   transition: all 0.2s;
+  color: var(--text-secondary);
 }
-.session-item:hover { background: rgba(255, 255, 255, 0.03); color: #f1f5f9; }
-.session-item.active { background: rgba(14, 165, 233, 0.12); color: #38bdf8; }
-.session-icon svg { width: 16px; height: 16px; flex-shrink: 0; }
-.session-info { flex: 1; overflow: hidden; }
+.session-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.session-item.active {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-light);
+  color: var(--primary-color);
+}
+.session-delete-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.session-item:hover .session-delete-btn {
+  display: flex;
+  align-items: center;
+}
+.session-delete-btn:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.session-icon svg { width: 18px; height: 18px; }
+.session-info { overflow: hidden; }
 .session-title-text { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
 .sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-glass);
 }
 .logout-btn {
-  color: #fca5a5;
-  justify-content: center;
+  color: var(--text-secondary) !important;
 }
 .logout-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #f87171;
-}
-
-/* 知识图谱内部承载区高度 */
-.graph-dialog-body {
-  height: 70vh;
-  width: 100%;
-  background: #0f172a;
-  border-radius: 8px;
-  overflow: hidden;
+  color: var(--danger) !important;
+  background: color-mix(in srgb, var(--danger) 10%, transparent) !important;
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent) !important;
 }
 </style>

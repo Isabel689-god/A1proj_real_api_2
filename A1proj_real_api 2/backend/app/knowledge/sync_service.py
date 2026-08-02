@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from time import time
 
 from app.core.config import get_settings
 from app.knowledge.document_parser import assign_ids, file_md5, parse_manual_file
@@ -84,6 +85,7 @@ class KnowledgeSyncService:
         state["document_count"] = len(documents)
         state["manual_count"] = len(manual_docs)
         state["dynamic_count"] = len(dynamic_docs)
+        state["updated_at"] = time()
 
         self.knowledge_path.parent.mkdir(parents=True, exist_ok=True)
         self.knowledge_path.write_text(

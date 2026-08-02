@@ -9,11 +9,8 @@
         <el-button type="primary" link class="graph-btn" @click="$router.push('/automotive')">
           🚗 设备大屏
         </el-button>
-        <el-button v-if="store.hasPermission('view_graph')" type="primary" link class="graph-btn" @click="showGraphDialog = true">
-          🌐 查看知识图谱
-        </el-button>
         <el-button type="primary" link class="user-center-btn" @click="showUserCenter = true">
-          👤 个人空间 ({{ roleNameMap[store.role] || store.role }})
+          👤 个人空间 ({{ store.group }})
         </el-button>
       </div>
     </div>
@@ -21,12 +18,16 @@
     <div class="chat-body-layout">
       <ChatSidebar />
       <div class="chat-main-area">
-        <ChatMessageList />
+        <ChatMessageList @suggestion-click="handleSuggestionClick" />
         <ChatComposer />
       </div>
 
-      <div class="chat-right-panel">
+      <div class="chat-right-panel" :class="{ collapsed: rightCollapsed }">
+        <button class="right-collapse-toggle" @click="rightCollapsed = !rightCollapsed" :title="rightCollapsed ? '展开右侧面板' : '收起右侧面板'">
+          {{ rightCollapsed ? '◀' : '▶' }}
+        </button>
         <RightPanel
+          v-if="!rightCollapsed"
           :sessionId="store.activeSessionId"
           :messages="store.messages"
           :deviceModel="store.selectedDeviceModel"
@@ -52,22 +53,12 @@
             <div class="profile-meta">
               <h3 class="username">{{ store.username }}</h3>
               <el-tag size="small" type="success" effect="dark" class="role-tag">
-                {{ roleNameMap[store.role] || store.role }}
+                {{ store.group }}
               </el-tag>
             </div>
           </div>
           <el-button type="danger" plain size="small" class="logout-btn" @click="handleLogout">
             退出登录
-          </el-button>
-        </div>
-
-        <div v-if="store.hasPermission('view_graph')" class="section-block">
-          <div class="section-title">
-            <span class="title-icon">🕸️</span>
-            <span>设备学识中心</span>
-          </div>
-          <el-button type="success" plain class="full-width-btn text-left-btn" @click="showGraphDialog = true; showUserCenter = false;">
-            📊 探索数字化设备知识图谱
           </el-button>
         </div>
 
@@ -142,16 +133,11 @@
       <div class="history-chat-viewer">
         <div v-for="msg in selectedChatHistory" :key="msg.id" :class="['history-msg-item', msg.role]">
           <div class="msg-sender">{{ msg.role === 'user' ? '操作员:' : 'AI助手:' }}</div>
-          <div class="msg-text">{{ msg.content }}</div>
+          <div class="msg-text" v-html="renderMarkdown(msg.content)"></div>
         </div>
       </div>
     </el-dialog>
 
-    <el-dialog v-model="showGraphDialog" title="数字化智能设备知识图谱网络" width="85%" top="5vh" destroy-on-close append-to-body>
-      <div class="graph-dialog-body">
-        <KnowledgeGraph />
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -159,18 +145,22 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useChatStore } from '../stores/chat';
+import { renderMarkdown } from '../utils/chatMarkdown';
 import ChatSidebar from '../components/ChatSidebar.vue';
 import ChatMessageList from '../components/ChatMessageList.vue';
 import ChatComposer from '../components/ChatComposer.vue';
 import RightPanel from '../components/RightPanel.vue';
-import KnowledgeGraph from '../components/KnowledgeGraph.vue'; // ✅ 新增：导入图谱可视化组件
-import { useChatStore } from '../stores/chat';
 
 const router = useRouter();
 const store = useChatStore();
+
+const handleSuggestionClick = (text: string) => {
+  store.sendMessage(text);
+};
 const showUserCenter = ref(false);
 const showHistoryDialog = ref(false);
-const showGraphDialog = ref(false); // ✅ 新增：控制知识图谱弹窗开启闭合
+const rightCollapsed = ref(false);
 const selectedChatHistory = ref<Array<any>>([]);
 const selectedHistoryOrder = ref('');
 const historyReports = computed(() => store.globalReports);
@@ -179,7 +169,7 @@ const roleNameMap: Record<string, string> = {
   admin: '管理中枢',
   senior: '高级职工',
   employee: '普通员工',
-  intern: '实习生'
+  intern: '访客'
 };
 
 const handleReportSubmitted = (report: any) => {
@@ -229,36 +219,56 @@ onMounted(() => {
 }
 
 .system-header {
-  height: 50px;
-  background: #0f172a;
+  height: 52px;
+  background: linear-gradient(90deg, var(--bg-dark), var(--bg-darker), var(--bg-dark));
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-glass);
   flex-shrink: 0;
 }
 
 .header-title {
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
   letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-title::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  box-shadow: 0 0 8px var(--primary-color);
 }
 
 /* ✅ 新增：顶栏知识图谱高亮按钮样式 */
 .graph-btn {
-  color: #10b981 !important;
+  color: var(--success) !important;
   font-size: 14px;
   font-weight: 500;
 }
 .graph-btn:hover {
-  color: #34d399 !important;
-  text-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  color: var(--primary-light) !important;
+  text-shadow: 0 0 8px var(--primary-color);
+}
+
+.neo4j-btn {
+  color: var(--primary-color) !important;
+  font-size: 14px;
+  font-weight: 500;
+}
+.neo4j-btn:hover {
+  color: var(--primary-light) !important;
+  text-shadow: 0 0 8px var(--primary-color);
 }
 
 .user-center-btn {
-  color: #38bdf8 !important;
+  color: var(--accent-blue) !important;
   font-size: 14px;
 }
 
@@ -274,7 +284,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   background: var(--bg-darker, #020617);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--border-glass);
   min-width: 0;
 }
 
@@ -284,34 +294,62 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.3s ease;
+  position: relative;
+}
+.chat-right-panel.collapsed {
+  width: 40px;
+}
+
+.right-collapse-toggle {
+  position: absolute;
+  top: 10px;
+  left: 8px;
+  z-index: 10;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-glass);
+  border-radius: 4px;
+  background: var(--bg-glass);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.2s;
+}
+.right-collapse-toggle:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 /* ========== 抽屉深色背景 + 彻底清除白边 ========== */
 :deep(.dark-drawer.el-drawer) {
-  background: #020617 !important;
+  background: var(--bg-dark) !important;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 1px solid var(--border-glass) !important;
 }
 
 :deep(.dark-drawer .el-drawer__body) {
-  background: #020617 !important;
+  background: var(--bg-dark) !important;
   padding: 0 !important;
   margin: 0 !important;
   border: none !important;
 }
 
 :deep(.dark-drawer .el-drawer__header) {
-  background: #020617 !important;
-  color: #f1f5f9 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-dark) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-glass) !important;
   margin-bottom: 0 !important;
   border: none !important;
 }
 
 :deep(.dark-drawer .el-drawer__container) {
-  background: #020617 !important;
+  background: var(--bg-dark) !important;
   box-shadow: none !important;
 }
 
@@ -323,15 +361,15 @@ onMounted(() => {
   height: 100%;
   box-sizing: border-box;
   overflow-y: auto;
-  background: #020617;
+  background: var(--bg-dark);
 }
 
 .glass-card {
-  background: rgba(15, 23, 42, 0.75);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(131, 165, 221, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
 }
 
 /* ========== 用户信息卡片 ========== */
@@ -351,10 +389,10 @@ onMounted(() => {
 }
 
 .profile-avatar {
-  background: linear-gradient(135deg, #0ea5e9, #3b82f6);
-  color: white;
+  background: var(--theme-gradient);
+  color: var(--text-inverse);
   font-weight: 600;
-  box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+  box-shadow: var(--shadow-neon-sm);
 }
 
 .profile-meta {
@@ -367,7 +405,7 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .role-tag {
@@ -391,9 +429,9 @@ onMounted(() => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--text-primary);
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border-glass);
 }
 
 .title-icon {
@@ -424,19 +462,19 @@ onMounted(() => {
   text-align: left;
   justify-content: flex-start;
   padding-left: 16px;
-  border-color: rgba(16, 185, 129, 0.3) !important;
-  color: #10b981 !important;
+  border-color: var(--border-light) !important;
+  color: var(--success) !important;
 }
 .text-left-btn:hover {
-  background: rgba(16, 185, 129, 0.1) !important;
+  background: var(--bg-hover) !important;
 }
 
 .badge {
   position: absolute;
   top: 6px;
   right: 8px;
-  background: #ef4444;
-  color: white;
+  background: var(--danger);
+  color: var(--text-inverse);
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 10px;
@@ -475,7 +513,7 @@ onMounted(() => {
 }
 
 .data-card:hover {
-  border-color: rgba(131, 165, 221, 0.25);
+  border-color: var(--border-light);
   transform: translateY(-1px);
 }
 
@@ -496,7 +534,7 @@ onMounted(() => {
 
 .info-label {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-secondary);
   text-align: left;
   line-height: 1;
 }
@@ -506,12 +544,12 @@ onMounted(() => {
   font-weight: 500;
   text-align: left;
   line-height: 1.2;
-  color: #f1f5f9;
+  color: var(--text-primary);
 }
 
 .mono-text {
   font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', ui-monospace, Consolas, monospace;
-  color: #38bdf8;
+  color: var(--accent-blue);
 }
 
 .col-order-id {
@@ -537,7 +575,7 @@ onMounted(() => {
 
 /* 深色空状态 */
 .dark-empty :deep(.el-empty__description) {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 /* ========== 历史对话弹窗 ========== */
@@ -545,7 +583,7 @@ onMounted(() => {
   max-height: 400px;
   overflow-y: auto;
   padding: 10px;
-  background: #f8f9fa;
+  background: var(--bg-dark);
   border-radius: 6px;
 }
 
@@ -556,12 +594,12 @@ onMounted(() => {
 }
 
 .history-msg-item.user {
-  background: #eef2fe;
+  background: var(--bg-glass);
 }
 
 .history-msg-item.assistant {
-  background: #fff;
-  border: 1px solid #e5e8ef;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
 }
 
 .msg-sender {
@@ -572,7 +610,7 @@ onMounted(() => {
 
 .msg-text {
   font-size: 13px;
-  color: #1d2129;
+  color: var(--text-primary);
   line-height: 1.5;
 }
 
@@ -580,31 +618,31 @@ onMounted(() => {
 .graph-dialog-body {
   height: 72vh;
   width: 100%;
-  background: #020617;
+  background: var(--bg-darker);
   border-radius: 8px;
   overflow: hidden;
 }
 
 /* ✅ 新增：深度穿透强行适配 Element Plus Dialog 暗色炫酷质感 */
 :deep(.el-dialog) {
-  background: #0f172a !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-dark) !important;
+  border: 1px solid var(--border-glass) !important;
   border-radius: 12px;
 }
 :deep(.el-dialog__title) {
-  color: #f1f5f9 !important;
+  color: var(--text-primary) !important;
   font-weight: 600;
   font-size: 16px;
 }
 :deep(.el-dialog__body) {
-  background: #020617 !important;
+  background: var(--bg-dark) !important;
   padding: 12px !important;
 }
 :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: #94a3b8 !important;
+  color: var(--text-secondary) !important;
 }
 :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
-  color: #38bdf8 !important;
+  color: var(--accent-blue) !important;
 }
 
 /* 滚动条美化 */
@@ -612,10 +650,10 @@ onMounted(() => {
   width: 6px;
 }
 .drawer-inner::-webkit-scrollbar-track {
-  background: #020617;
+  background: var(--bg-dark);
 }
 .drawer-inner::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.5);
+  background: var(--border-light);
   border-radius: 3px;
 }
 </style>
@@ -627,7 +665,7 @@ onMounted(() => {
 .dark-drawer.el-drawer:focus-visible,
 .dark-drawer .el-drawer__body,
 .dark-drawer .el-drawer__container {
-  background-color: #020617 !important;
+  background-color: var(--bg-dark) !important;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
@@ -637,6 +675,6 @@ onMounted(() => {
 }
 /* 左侧分隔线兜底 */
 .dark-drawer.el-drawer {
-  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 1px solid var(--border-glass) !important;
 }
 </style>

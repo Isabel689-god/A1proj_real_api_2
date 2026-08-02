@@ -23,7 +23,20 @@ export interface ChatMessage {
   }>;
   vision?: any;  // 新增：视觉分析结果
   fault_localization?: any;
-  // 新增：故障定位结果
+  suggestions?: string[];
+  sop_steps?: Array<{ title: string; desc: string }>;
+  current_sop?: {
+    version: number;
+    sop_id?: string;
+    issue_fingerprint?: string;
+    sop_status?: string;
+    steps: Array<{ title: string; desc: string; step_order?: number; step_type?: string }>;
+    notes?: Array<{ title: string; content: string; type?: string }>;
+    created_at?: string;
+    updated_at?: string;
+  };
+  tool_calls?: Array<{ name: string; label: string; output: string }>;
+  token_usage?: { prompt: number; completion: number; total: number };
 }
 
 // 2. 检修工单/会话接口
@@ -69,11 +82,8 @@ export interface RepairReportData {
   status: string;
 }
 
-// ✅ 新增：用户与权限类型
-export type UserRole = 'intern' | 'employee' | 'senior' | 'admin';
-
 export interface UserInfo {
   username: string;
-  role: UserRole;
+  group: string;
   permissions: string[];
 }

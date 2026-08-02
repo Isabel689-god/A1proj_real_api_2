@@ -16,12 +16,6 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
-      path: '/graph',
-      name: 'GraphPreview',
-      component: () => import('../components/KnowledgeGraph.vue'),
-      meta: { requiresAuth: false }
-    },
-    {
       path: '/chat',
       name: 'Chat',
       component: () => import('../views/ChatView.vue'),
@@ -54,14 +48,12 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach((to, from, next) => {
   const store = useChatStore();
+  if (to.meta.requiresAuth) store.restoreAuth();
 
   if (to.meta.requiresAuth && !store.isLoggedIn) {
     next('/login');
-  } else if (to.path === '/login' && store.isLoggedIn) {
-    next(store.role === 'admin' ? '/admin' : '/chat');
-  } else if (to.meta.role && to.meta.role !== store.role && store.isLoggedIn) {
-    // 防止越权访问
-    next(store.role === 'admin' ? '/admin' : '/chat');
+  } else if (to.meta.role && store.group !== '管理组' && store.isLoggedIn) {
+    next(store.group === '管理组' ? '/admin' : '/chat');
   } else {
     next();
   }

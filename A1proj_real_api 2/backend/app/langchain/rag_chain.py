@@ -13,9 +13,9 @@ from typing import Any, AsyncGenerator
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
 from app.core.config import get_settings
+from app.core.llm_provider import get_llm
 from app.knowledge.graph_service import KnowledgeGraphService
 from app.knowledge.sync_service import KnowledgeSyncService
 from app.langchain.vector_store import DashVectorStore
@@ -26,17 +26,8 @@ from app.vision.vision_service import VisionService
 # ═══════════════════════════════════════════════════
 
 
-def _mk_llm(temperature: float | None = None, streaming: bool = False) -> ChatOpenAI:
-    s = get_settings()
-    return ChatOpenAI(
-        model=s.LLM_MODEL,
-        openai_api_key=s.api_key,
-        openai_api_base=s.api_base,
-        temperature=temperature if temperature is not None else s.LLM_TEMPERATURE,
-        max_tokens=s.LLM_MAX_TOKENS,
-        timeout=s.LLM_TIMEOUT_SECONDS,
-        streaming=streaming,
-    )
+def _mk_llm(temperature: float | None = None, streaming: bool = False):
+    return get_llm(temperature=temperature, streaming=streaming)
 
 
 # ═══════════════════════════════════════════════════

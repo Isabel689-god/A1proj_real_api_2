@@ -171,12 +171,12 @@ const handleSend = async () => {
   padding: 14px 18px 10px;
   display: flex; flex-direction: column;
   transition: border-color 0.3s, box-shadow 0.3s;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-glass);
 }
 
 .gemini-capsule-box:focus-within {
   border-color: var(--border-light);
-  box-shadow: 0 4px 20px rgba(92, 85, 140, 0.2); /* 蓝紫环境光 */
+  box-shadow: var(--shadow-neon-sm);
 }
 
 /* 内嵌多模态预览卡片 */
@@ -188,12 +188,12 @@ const handleSend = async () => {
 .preview-token {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-glass);
   padding: 4px 10px 4px 6px;
   border-radius: 12px;
   gap: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  box-shadow: var(--shadow-glass);
 }
 
 .mini-thumb {
@@ -205,7 +205,7 @@ const handleSend = async () => {
 
 .thumb-name {
   font-size: 12px;
-  color: #e2e8f0;
+  color: var(--text-primary);
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -215,7 +215,7 @@ const handleSend = async () => {
 .clear-thumb-btn {
   background: transparent;
   border: none;
-  color: #94a3b8;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -224,8 +224,8 @@ const handleSend = async () => {
 }
 
 .clear-thumb-btn:hover {
-  color: #ef4444;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--danger);
+  background: var(--bg-hover);
 }
 
 /* 隐形文本框 */
@@ -237,14 +237,14 @@ const handleSend = async () => {
   border: none;
   outline: none;
   resize: none;
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-size: 15px;
   line-height: 1.6;
   padding: 2px 4px;
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
 }
 .capsule-textarea::placeholder {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 /* 底部轻量级控制条 */
@@ -263,15 +263,15 @@ const handleSend = async () => {
 
 /* 适配胶囊风的轻量化下拉菜单 */
 .gemini-mini-select :deep(.el-input__wrapper) {
-  background-color: rgba(255, 255, 255, 0.05) !important;
+  background-color: var(--bg-soft) !important;
   box-shadow: none !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--border-glass) !important;
   border-radius: 16px !important;
   padding: 1px 12px !important;
   height: 32px;
 }
 .gemini-mini-select :deep(.el-input__inner) {
-  color: #cbd5e1 !important;
+  color: var(--text-secondary) !important;
   font-size: 12px;
 }
 
@@ -294,7 +294,7 @@ const handleSend = async () => {
   border-radius: 50%;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.2);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -303,15 +303,15 @@ const handleSend = async () => {
 }
 
 .circle-send-btn.has-content {
-  background: var(--primary-color);
-  color: #ffffff;
+  background: var(--theme-gradient);
+  color: var(--text-inverse);
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(74, 101, 150, 0.4); /* 低饱和阴影 */
+  box-shadow: 0 2px 12px rgba(0, 200, 180, 0.4);
 }
-
 .circle-send-btn.has-content:hover {
-  background: var(--primary-light);
+  background: var(--theme-gradient);
   transform: scale(1.05);
+  box-shadow: 0 4px 20px rgba(0, 200, 180, 0.5);
 }
 
 .circle-send-btn svg {
@@ -323,7 +323,7 @@ const handleSend = async () => {
 /* 底部声明 */
 .bottom-disclaimer {
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-muted);
   margin-top: 12px;
   text-align: center;
   letter-spacing: 0.5px;
