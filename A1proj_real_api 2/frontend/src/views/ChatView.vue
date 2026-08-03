@@ -3,12 +3,6 @@
     <div class="system-header">
       <div class="header-title">智能设备多模态检修控制台</div>
       <div class="header-right-actions" style="display: flex; align-items: center; gap: 16px;">
-        <el-button type="primary" link class="graph-btn" @click="$router.push('/dashboard')">
-          📊 故障大屏
-        </el-button>
-        <el-button type="primary" link class="graph-btn" @click="$router.push('/automotive')">
-          🚗 设备大屏
-        </el-button>
         <el-button type="primary" link class="user-center-btn" @click="showUserCenter = true">
           👤 个人空间 ({{ store.group }})
         </el-button>
