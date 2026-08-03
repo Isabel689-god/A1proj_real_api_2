@@ -63,14 +63,14 @@ export async function* sendChatMessageStream(
 
       response = await fetch(`${API_BASE}/chat/stream/multipart`, {
         method: 'POST',
-        mode: 'cors',
+        
         body: formData
       });
     } else {
       // 纯文本使用JSON接口
       response = await fetch(`${API_BASE}/chat/agent`, {
         method: 'POST',
-        mode: 'cors',
+        
         headers: {
           'Content-Type': 'application/json',
         },
@@ -160,7 +160,7 @@ export async function sendChatMessageWithSession(
 
   const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
-    mode: 'cors',
+    
     headers: {
       'Content-Type': 'application/json',
     },
