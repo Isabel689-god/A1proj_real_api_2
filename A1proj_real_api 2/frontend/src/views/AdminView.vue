@@ -1070,6 +1070,7 @@ const doLogout = () => {
 };
 
 onMounted(() => {
+  loadGroups();
   loadUsers();
 });
 </script>
