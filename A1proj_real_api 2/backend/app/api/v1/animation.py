@@ -6,22 +6,24 @@ from langchain_openai import ChatOpenAI
 
 router = APIRouter(prefix="/animation", tags=["动画演示"])
 
-PROMPT = """生成一个简洁的HTML演示页面。展示这个维修步骤的操作动画。
+PROMPT = """你是一个工业设备维修动画师。根据下面的维修步骤，生成一个逼真的工厂设备操作演示HTML页面。
 
-步骤描述：{step_desc}
+维修步骤：{step_desc}
 
-必须：
-- 完整HTML（含<!DOCTYPE html>、<style>、<body>）
-- 纯CSS动画（@keyframes），不用JS
-- 深色背景#0a0f1d，青色主色#00c8b4
-- 用div/圆形/线条表示设备，不用图片
-- 一个主要动画元素（工具移动、信号波纹、状态灯闪烁等）
-- 步骤文字在动画上方
-- 循环3次后停在最终状态
-- 手机竖屏适配，简洁明了
-- 总共不超过150行HTML
+严格要求：
+1. 完整HTML文件（DOCTYPE、style、body）
+2. 纯CSS动画（@keyframes），零JavaScript
+3. 深色工业风背景#0a1020，主色#00e5b0，辅色#ff6b35
+4. 模拟真实工厂设备外观——用CSS画出：数控面板/万用表/编码器/伺服电机/机械臂/传送带/报警灯/液压杆等
+5. 必须有至少2个联动动画（如：探头下降+面板读数变化、报警灯闪烁+电机停转）
+6. 使用box-shadow、gradient、border做出金属/塑料质感
+7. 步骤文字以HUD风格叠加在动画上方
+8. 循环3次后定格在完成状态
+9. 适配手机竖屏（max-width:420px居中）
+10. 控制在180行内，不要废话
 
-直接输出HTML代码，不要解释。"""
+直接输出HTML代码："""
+
 
 
 class AnimationRequest(BaseModel):
@@ -40,8 +42,8 @@ async def generate_animation(req: AnimationRequest):
             model=settings.LLM_MODEL,
             openai_api_key=settings.api_key,
             openai_api_base=settings.api_base,
-            temperature=0.5,
-            max_tokens=2048,
+            temperature=0.3,
+            max_tokens=1500,
             timeout=60,
         )
         response = model.invoke(PROMPT.format(step_desc=req.step_desc or req.step_title))
