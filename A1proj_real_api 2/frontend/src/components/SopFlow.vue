@@ -73,9 +73,12 @@ watch(() => store.messages, (msgs) => {
       title: n.title || '注意事项',
       content: n.content || ''
     })).filter((n: any) => n.content)
-    sopMeta.value = currentSop
-      ? `当前版本 v${currentSop.version} · ${formatTime(currentSop.updated_at || currentSop.created_at)}`
-      : '根据 AI 分析结果实时生成'
+    // 显示分类状态：追问补充 vs 新故障
+    const classification = currentSop?.classification
+    const isMerge = classification?.decision === 'same'
+    const decisionLabel = isMerge ? '🔄 追问补充' : '✨ 新故障诊断'
+    const sopId = currentSop?.sop_id ? ` · ${currentSop.sop_id.slice(0, 8)}` : ''
+    sopMeta.value = `${decisionLabel} · v${currentSop.version}${sopId} · ${formatTime(currentSop.updated_at || currentSop.created_at)}`
     emit('update:activeStep', 0)
   } else if (!last) {
     dynamicSteps.value = []
