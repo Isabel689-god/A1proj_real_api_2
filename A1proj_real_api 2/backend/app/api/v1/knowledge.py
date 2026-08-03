@@ -366,7 +366,7 @@ def list_manual_files():
     for p in manual_files:
         size_kb = round(p.stat().st_size / 1024)
         file_type = p.suffix.lower().replace(".", "").upper()
-        pdf_status = _diagnose_pdf(p.name) if p.suffix.lower() == ".pdf" else {}
+        pdf_status = {}  # skip per-file diagnose for list performance
         category = cat_overrides.get(p.name) or (
             "总装设备检修手册" if "报警代码" in p.name
             else ("机床设备维修手册" if p.name in file_hashes else "未分类")
