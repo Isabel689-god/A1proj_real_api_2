@@ -10,6 +10,11 @@
           <template #description>
             <div class="step-desc-content">
               <div class="ai-instruction">{{ step.desc }}</div>
+              <div style="margin-top:6px;">
+                <el-button size="small" type="primary" link @click="generateDemo(step)" :loading="step._generating">
+                  🎬 演示动画
+                </el-button>
+              </div>
               <div v-if="activeStep === index" class="step-action-zone">
                 <el-radio-group v-model="step.selectedOption" class="cyber-radio-group">
                   <el-radio v-for="opt in step.options" :key="opt" :label="opt">{{ opt }}</el-radio>
@@ -42,6 +47,14 @@
       <div class="radar-scan"></div>
       <p>等待 AI 生成标准化排障步骤...</p>
     </div>
+
+    <!-- 动画演示弹窗 -->
+    <el-dialog v-model="showDemo" :title="demoTitle" width="95%" top="2vh" destroy-on-close>
+      <div v-if="demoLoading" style="text-align:center;padding:60px;color:var(--text-muted);">
+        🎬 正在生成动画演示...
+      </div>
+      <iframe v-else :srcdoc="demoHtml" style="width:100%;height:70vh;border:none;border-radius:8px;" />
+    </el-dialog>
   </div>
 </template>
 
@@ -49,6 +62,7 @@
 import { ref, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { Check } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const store = useChatStore()
 const props = defineProps<{ activeStep: number }>()
@@ -56,6 +70,39 @@ const emit = defineEmits<{ (e: 'update:activeStep', v: number): void; (e: 'all-c
 const dynamicSteps = ref<any[]>([]);
 const sopNotes = ref<any[]>([]);
 const sopMeta = ref('根据 AI 分析结果实时生成');
+
+// 动画演示状态
+const showDemo = ref(false)
+const demoLoading = ref(false)
+const demoHtml = ref('')
+const demoTitle = ref('')
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+
+const generateDemo = async (step: any) => {
+  step._generating = true
+  demoTitle.value = `🎬 ${step.title || step.step_title}`
+  showDemo.value = true
+  demoLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/animation/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step_desc: step.desc || step.step_description, step_title: step.title || step.step_title })
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || '生成失败')
+    }
+    const data = await res.json()
+    demoHtml.value = data.html
+  } catch (e: any) {
+    ElMessage.error(e.message || '动画生成失败')
+    showDemo.value = false
+  } finally {
+    demoLoading.value = false
+    step._generating = false
+  }
+}
 
 watch(() => store.messages, (msgs) => {
   const last = [...msgs].reverse().find(m => m.role === 'assistant' && m.status === 'done')
@@ -73,7 +120,6 @@ watch(() => store.messages, (msgs) => {
       title: n.title || '注意事项',
       content: n.content || ''
     })).filter((n: any) => n.content)
-    // 显示分类状态：追问补充 vs 新故障
     const classification = currentSop?.classification
     const isMerge = classification?.decision === 'same'
     const decisionLabel = isMerge ? '🔄 追问补充' : '✨ 新故障诊断'
