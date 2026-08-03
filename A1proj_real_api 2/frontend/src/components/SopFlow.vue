@@ -10,6 +10,7 @@
           <template #description>
             <div class="step-desc-content">
               <div class="ai-instruction">{{ step.desc }}</div>
+              <el-button size="small" type="primary" link @click="showDemo(step)" style="margin-top:4px;">🎬 演示动画</el-button>
               <div v-if="activeStep === index" class="step-action-zone">
                 <el-radio-group v-model="step.selectedOption" class="cyber-radio-group">
                   <el-radio v-for="opt in step.options" :key="opt" :label="opt">{{ opt }}</el-radio>
@@ -42,6 +43,11 @@
       <div class="radar-scan"></div>
       <p>等待 AI 生成标准化排障步骤...</p>
     </div>
+      <!-- 动画演示弹窗 -->
+    <el-dialog v-model="demoVisible" :title="demoTitle" width="95%" top="2vh" destroy-on-close>
+      <div v-if="demoLoading" style="text-align:center;padding:60px;color:var(--text-muted);">🎬 正在生成动画...</div>
+      <iframe v-else :srcdoc="demoHtml" style="width:100%;height:70vh;border:none;border-radius:8px;" />
+    </el-dialog>
   </div>
 </template>
 
@@ -92,6 +98,28 @@ const formatTime = (value?: string) => {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleString('zh-CN')
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+const demoVisible = ref(false)
+const demoLoading = ref(false)
+const demoHtml = ref('')
+const demoTitle = ref('')
+
+const showDemo = async (step: any) => {
+  demoTitle.value = `🎬 ${step.title || step.step_title}`
+  demoVisible.value = true
+  if (step._animHtml) { demoHtml.value = step._animHtml; return }
+  demoLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/animation/generate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({step_desc: step.desc, step_title: step.title})
+    })
+    const data = await res.json()
+    step._animHtml = data.html
+    demoHtml.value = data.html
+  } catch { demoVisible.value = false } finally { demoLoading.value = false }
 }
 
 const nextStep = () => {
