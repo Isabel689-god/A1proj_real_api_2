@@ -91,23 +91,25 @@ const deviceOptions = ref([
 
 const fetchDeviceList = async () => {
   try {
-    const response = await fetch('/knowledge/devices');
-    if (!response.ok) throw new Error('获取设备列表失败');
+    const response = await fetch('/knowledge/manuals', {
+      headers: { 'X-Admin-Token': 'admin-change-me' }
+    });
+    if (!response.ok) throw new Error('获取列表失败');
 
-    const devices = await response.json();
+    const manuals = await response.json();
 
     // 转换为下拉框格式
     deviceOptions.value = [
       { label: '全部设备 (不推荐，回答可能不准确)', value: 'all' },
-      ...devices.map((device: any) => ({
-        label: device.name,
-        value: device.id
+      ...manuals.map((m: any) => ({
+        label: m.filename,
+        value: m.filename
       }))
     ];
 
-    // 默认选择第一个真实设备（如果有）
-    if (devices.length > 0) {
-      store.selectedDeviceModel = devices[0].id;
+    // 默认选择第一个手册（如果有）
+    if (manuals.length > 0) {
+      store.selectedDeviceModel = manuals[0].filename;
     }
   } catch (error) {
     console.error('获取设备列表失败:', error);

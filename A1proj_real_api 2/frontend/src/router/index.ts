@@ -52,8 +52,8 @@ router.beforeEach((to, from, next) => {
 
   if (to.meta.requiresAuth && !store.isLoggedIn) {
     next('/login');
-  } else if (to.meta.role && store.group !== '管理组' && store.isLoggedIn) {
-    next(store.group === '管理组' ? '/admin' : '/chat');
+  } else if (to.meta.role && store.group !== '管理人员' && store.group !== '管理组' && store.isLoggedIn) {
+    next((store.group === '管理人员' || store.group === '管理组') ? '/admin' : '/chat');
   } else {
     next();
   }

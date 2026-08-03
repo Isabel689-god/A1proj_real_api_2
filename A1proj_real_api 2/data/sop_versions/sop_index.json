@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "sop_id": "sop_6f82a0a2a8c9",
+      "session_id": "session_1785728134635",
+      "issue_fingerprint": "176|编码器|报警",
+      "fault_code": "176",
+      "device_model": "",
+      "updated_at": "2026-08-03T03:36:33.242396+00:00"
+    }
+  ]
+}

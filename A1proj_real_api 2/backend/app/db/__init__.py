@@ -6,6 +6,9 @@ from app.db.models import (
     EntityTypeDict,
     Fault,
     FaultCause,
+    Message,
+    Session,
+    User,
     Relation,
     Solution,
     _biz_id,
@@ -15,6 +18,6 @@ from app.db.entity_type import EntityType, validate_type, valid_types
 __all__ = [
     "Base", "get_engine", "get_session", "init_db",
     "Device", "Component", "Fault", "FaultCause", "Solution",
-    "Relation", "EntityTypeDict", "_biz_id",
+    "Relation", "EntityTypeDict", "Session", "Message", "User", "_biz_id",
     "EntityType", "validate_type", "valid_types",
 ]

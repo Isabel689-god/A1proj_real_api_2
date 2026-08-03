@@ -33,6 +33,14 @@
           <el-icon><Monitor /></el-icon>
           <span>系统运维监控</span>
         </el-menu-item>
+        <el-menu-item index="knowledge_mysql">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>知识图谱(MySQL)</span>
+        </el-menu-item>
+        <el-menu-item index="knowledge_neo4j">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>知识图谱(Neo4j)</span>
+        </el-menu-item>
         <div style="flex:1"></div>
         <div style="padding: 10px;">
           <button class="theme-toggle" @click="toggleTheme">
@@ -81,10 +89,10 @@
                       <div class="perm-tag-group" style="flex:1;">
                         <el-tag
                           v-for="p in (userPermMap[m] || [])" :key="p" size="small" effect="plain"
-                          :closable="name !== '管理组' && userExtraPermMap[m]?.includes(p)"
+                          :closable="name !== '管理人员' && userExtraPermMap[m]?.includes(p)"
                           @close="removeExtraPerm(name, m, p)"
                         >{{ getPermName(p) }}</el-tag>
-                        <el-dropdown v-if="name !== '管理组'" trigger="click" @command="(cmd: string) => addExtraPerm(name, m, cmd)">
+                        <el-dropdown v-if="name !== '管理人员'" trigger="click" @command="(cmd: string) => addExtraPerm(name, m, cmd)">
                           <el-button size="small" circle>+</el-button>
                           <template #dropdown>
                             <el-dropdown-menu>
@@ -362,6 +370,16 @@
           </div>
         </div>
       </div>
+
+      <!-- 知识图谱(MySQL) -->
+      <div v-if="activeMenu === 'knowledge_mysql'" class="content-panel" style="height:calc(100vh - 120px);">
+        <KnowledgeGraph />
+      </div>
+
+      <!-- 知识图谱(Neo4j) -->
+      <div v-if="activeMenu === 'knowledge_neo4j'" class="content-panel" style="height:calc(100vh - 120px);">
+        <KnowledgeGraphNeo4j />
+      </div>
     </el-main>
 
     <!-- 工单对话审计弹窗 -->
@@ -424,6 +442,8 @@ import { useChatStore } from '../stores/chat';
 import { renderMarkdown } from '../utils/chatMarkdown';
 import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import KnowledgeGraph from '../components/KnowledgeGraph.vue';
+import KnowledgeGraphNeo4j from '../components/KnowledgeGraphNeo4j.vue';
 
 const router = useRouter();
 const store = useChatStore();
@@ -724,6 +744,8 @@ const pageTitle = computed(() => {
     upload_audit: '手册录入申请审核',
     records: '全局业务闭环审计 (Audit Logs)',
     monitor: '系统运维监控面板 (System Monitor)',
+    knowledge_mysql: '知识图谱 (MySQL)',
+    knowledge_neo4j: '知识图谱 (Neo4j)',
   };
   return map[activeMenu.value] || '管理中枢';
 });

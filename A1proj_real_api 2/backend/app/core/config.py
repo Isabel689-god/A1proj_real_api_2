@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = str(_ENV_PATH)
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
     # ── 派生路径属性 ──
 

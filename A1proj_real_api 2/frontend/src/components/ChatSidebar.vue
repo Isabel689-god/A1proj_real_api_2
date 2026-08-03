@@ -38,6 +38,22 @@
       </button>
 
       <button
+        v-if="store.hasPermission('view_graph')"
+        @click="showGraphDialog = true"
+        :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
+        title="探索知识图谱"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span v-if="!isCollapsed">探索知识图谱</span>
+      </button>
+
+      <button
         v-if="store.hasPermission('request_upload')"
         @click="showRequestDialog = true"
         :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
@@ -122,6 +138,12 @@
       </button>
     </div>
 
+    <el-dialog v-model="showGraphDialog" title="设备检修知识图谱网络" width="95%" top="2vh" destroy-on-close>
+      <div class="graph-dialog-body">
+        <KnowledgeGraph />
+      </div>
+    </el-dialog>
+
     <el-dialog v-model="showRequestDialog" title="申请录入新手册" width="480px" destroy-on-close>
       <el-form :model="requestForm" label-width="100px">
         <el-form-item label="手册文件">
@@ -168,6 +190,7 @@ import { ref, reactive, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { ElMessage } from 'element-plus';
+import KnowledgeGraph from './KnowledgeGraph.vue';
 
 const theme = inject<any>('theme', ref('dark'))
 const toggleTheme = inject<() => void>('toggleTheme', () => {})
@@ -253,6 +276,7 @@ const equipmentOptions = [
   },
 ];
 
+const showGraphDialog = ref(false);
 const showRequestDialog = ref(false);
 const showDirectUploadDialog = ref(false);
 const submittingRequest = ref(false);
@@ -512,5 +536,13 @@ const submitDirectUpload = async () => {
   color: var(--danger) !important;
   background: color-mix(in srgb, var(--danger) 10%, transparent) !important;
   border-color: color-mix(in srgb, var(--danger) 28%, transparent) !important;
+}
+
+.graph-dialog-body {
+  height: 72vh;
+  width: 100%;
+  background: var(--bg-darker);
+  border-radius: 8px;
+  overflow: hidden;
 }
 </style>

@@ -149,7 +149,8 @@ const handleLogin = async () => {
       if (response.ok && data.success) {
         store.setUserLoggedIn(true, data.user.group, data.user.username, data.user.permissions);
         ElMessage.success(`欢迎回来，${data.user.username}！正在载入工作台...`);
-        router.push(data.user.group === '管理组' ? '/admin' : '/chat');
+        const isAdmin = data.user.group === '管理人员' || data.user.group === '管理组';
+        router.push(isAdmin ? '/admin' : '/chat');
       } else {
         ElMessage.error(data.detail || '用户名或密码错误');
       }

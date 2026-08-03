@@ -92,3 +92,35 @@ class EntityTypeDict(Base):
     code = Column(String(32), unique=True, nullable=False)
     table_name = Column(String(64), nullable=False)
     display_name = Column(String(64), nullable=False)
+
+
+class User(Base):
+    __tablename__ = "sys_user"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password = Column(String(128), nullable=False)
+    group_name = Column(String(64), default="访客组")
+    extra_permissions = Column(Text, default="[]")
+    is_online = Column(Integer, default=0)
+    registered_at = Column(DateTime, server_default=func.now())
+    last_login = Column(DateTime, nullable=True)
+
+
+class Session(Base):
+    __tablename__ = "sys_session"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(128), unique=True, nullable=False, index=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    title = Column(String(255), default="新对话")
+    message_count = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Message(Base):
+    __tablename__ = "sys_message"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(128), nullable=False, index=True)
+    role = Column(String(32), nullable=False)
+    content = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
