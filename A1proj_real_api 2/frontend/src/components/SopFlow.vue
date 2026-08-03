@@ -79,16 +79,9 @@ const demoTitle = ref('')
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const generateDemo = async (step: any) => {
+  step._generating = true
   demoTitle.value = `🎬 ${step.title || step.step_title}`
   showDemo.value = true
-  // 优先使用已缓存的动画
-  if (step._animHtml) {
-    demoHtml.value = step._animHtml
-    demoLoading.value = false
-    return
-  }
-  // 还没生成完，重新请求
-  step._generating = true
   demoLoading.value = true
   try {
     const res = await fetch(`${API_BASE}/animation/generate`, {
@@ -101,7 +94,6 @@ const generateDemo = async (step: any) => {
       throw new Error(err.detail || '生成失败')
     }
     const data = await res.json()
-    step._animHtml = data.html
     demoHtml.value = data.html
   } catch (e: any) {
     ElMessage.error(e.message || '动画生成失败')
@@ -122,8 +114,7 @@ watch(() => store.messages, (msgs) => {
       title: s.step_title || s.title || `检修步骤 ${index + 1}`,
       desc: s.desc || s.description || '',
       options: ['✅ 正常', '⚠️ 已修复', '🔧 已更换'],
-      selectedOption: s.selectedOption || '',
-      _animHtml: s._animHtml || '',
+      selectedOption: s.selectedOption || ''
     }))
     sopNotes.value = (currentSop?.notes || []).map((n: any) => ({
       title: n.title || '注意事项',
@@ -135,34 +126,12 @@ watch(() => store.messages, (msgs) => {
     const sopId = currentSop?.sop_id ? ` · ${currentSop.sop_id.slice(0, 8)}` : ''
     sopMeta.value = `${decisionLabel} · v${currentSop.version}${sopId} · ${formatTime(currentSop.updated_at || currentSop.created_at)}`
     emit('update:activeStep', 0)
-    // 自动生成所有步骤的动画
-    autoGenerateAnimations()
   } else if (!last) {
     dynamicSteps.value = []
     sopNotes.value = []
     sopMeta.value = '根据 AI 分析结果实时生成'
   }
 }, { deep: true, immediate: true })
-
-const autoGenerateAnimations = async () => {
-  for (const step of dynamicSteps.value) {
-    if (step._animHtml || step._generating) continue
-    step._generating = true
-    try {
-      const res = await fetch(`${API_BASE}/animation/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step_desc: step.desc, step_title: step.title })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        step._animHtml = data.html
-      }
-    } catch {} finally {
-      step._generating = false
-    }
-  }
-}
 
 const formatTime = (value?: string) => {
   if (!value) return '刚刚更新'
