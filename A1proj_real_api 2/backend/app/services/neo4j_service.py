@@ -43,10 +43,11 @@ class Neo4jService:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self._uri = settings.NEO4J_URI
-        self._user = settings.NEO4J_USERNAME
-        self._password = settings.NEO4J_PASSWORD
-        self._database = settings.NEO4J_DATABASE
+        import os
+        self._uri = os.environ.get("neo4j_uri", "")
+        self._user = os.environ.get("neo4j_username", "")
+        self._password = os.environ.get("neo4j_password", "")
+        self._database = os.environ.get("neo4j_database", "neo4j")
         self._driver = None
 
     @property
