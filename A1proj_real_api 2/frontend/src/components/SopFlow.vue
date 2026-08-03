@@ -53,7 +53,7 @@
       <div v-if="demoLoading" style="text-align:center;padding:60px;color:var(--text-muted);">
         🎬 正在生成动画演示...
       </div>
-      <iframe v-else :srcDoc="demoHtml" style="width:100%;height:70vh;border:none;border-radius:8px;" />
+      <iframe v-else :srcdoc="demoHtml" style="width:100%;height:70vh;border:none;border-radius:8px;" />
     </el-dialog>
   </div>
 </template>
@@ -158,7 +158,7 @@ const autoGenerateAnimations = async () => {
         const data = await res.json()
         step._animHtml = data.html
       }
-    } catch (e) { console.log("动画预生成失败:", e) } finally {
+    } catch {} finally {
       step._generating = false
     }
   }
