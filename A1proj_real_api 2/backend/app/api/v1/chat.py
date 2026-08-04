@@ -133,14 +133,26 @@ async def chat_stream(req: ChatStreamRequest):
                 yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
             sop_steps = _parse_sop_steps(full_answer)
             if sop_steps:
-                sop_record = sop_service.save_version(
-                    req.session_id,
-                    req.user_id,
-                    req.question,
-                    sop_steps[:8],
-                    full_answer,
-                )
-                yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+                try:
+                    sop_record = sop_service.save_version(
+                        req.session_id,
+                        req.user_id,
+                        req.question,
+                        sop_steps[:8],
+                        full_answer,
+                    )
+                    # 注入 Agent 通过 sop_manage 维护的步骤状态
+                    state = sop_service.get_sop_state(req.session_id)
+                    if state.get("exists"):
+                        sop_record["current_step"] = state.get("current_step", 1)
+                        sop_record["all_done"] = state.get("all_done", False)
+                        for i, s in enumerate(sop_record.get("steps", [])):
+                            if i < len(state.get("steps", [])):
+                                s["step_status"] = state["steps"][i].get("status", "pending")
+                                s["step_note"] = state["steps"][i].get("note", "")
+                    yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    logger.warning(f"save_version 失败: {e}")
             yield 'data: {"type": "done"}\n\n'
 
         return StreamingResponse(sse_generator(), media_type="text/event-stream")
@@ -177,6 +189,7 @@ def _tool_label(name: str) -> str:
         "search_knowledge_base": "搜索知识库",
         "search_mysql_graph": "查询图谱",
         "get_user_history": "查询记忆",
+        "sop_manage": "SOP状态管理",
     }.get(name, name)
 
 
@@ -275,6 +288,59 @@ def _parse_sop_steps(text: str) -> list[dict]:
     return steps[:8]
 
 
+def _auto_apply_sop_updates(session_id: str, text: str) -> None:
+    """扫描 Agent 回复文本中的 SOP 状态更新意图，自动执行。
+    兜底 DeepSeek 模型只说不做的问题。"""
+    import re as _r
+    try:
+        state = sop_service.get_sop_state(session_id)
+        if not state.get("exists") or not state.get("steps"):
+            return
+
+        total = len(state["steps"])
+        batch: list[tuple[int, str, str]] = []
+
+        # "第4步之前已完成" → 前3步 done
+        m = _r.search(r'第\s*(\d+)\s*步?\s*之前\s*(?:已|全部)?\s*(?:完成|做完)', text)
+        if m:
+            n = int(m.group(1)) - 1
+            if n >= 1:
+                for i in range(1, min(n, total) + 1):
+                    batch.append((i, "done", "自动"))
+
+        # "前3步已完成" / "前面3步已完成" → 前N步 done
+        m = _r.search(r'前\s*面?\s*(\d+)\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', text)
+        if m:
+            n = int(m.group(1))
+            for i in range(1, min(n, total) + 1):
+                batch.append((i, "done", "自动"))
+
+        # "步骤1-4标记完成" → 范围 done
+        m = _r.search(r'步骤\s*(\d+)\s*[-–—至到]\s*(\d+)\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', text)
+        if m:
+            start, end = int(m.group(1)), int(m.group(2))
+            for i in range(max(1, start), min(end, total) + 1):
+                batch.append((i, "done", "自动"))
+
+        # "步骤X标记为完成/done" / "第X步完成"
+        for m in _r.finditer(r'(?:步骤|第)\s*(\d+)\s*步?\s*(?:标记为?|设置为?|已|为)?\s*(?:完成|done)', text):
+            idx = int(m.group(1))
+            if 1 <= idx <= total:
+                batch.append((idx, "done", "自动"))
+
+        # "步骤X进行中"
+        for m in _r.finditer(r'(?:步骤|第)\s*(\d+)\s*步?\s*(?:标记为?|设置为?|为)?\s*(?:进行中|in.progress)', text, _r.IGNORECASE):
+            idx = int(m.group(1))
+            if 1 <= idx <= total:
+                batch.append((idx, "in_progress", "自动"))
+
+        if batch:
+            sop_service.batch_update_steps(session_id, batch)
+            logger.info(f"自动更新 SOP 状态: session={session_id}, {len(batch)}步")
+    except Exception as e:
+        logger.warning(f"自动 SOP 更新失败: {e}")
+
+
 def _attach_latest_sop(session: dict) -> dict:
     """将当前 SOP 版本挂到最后一条助手消息，便于刷新后右侧原位恢复。"""
     latest = sop_service.get_latest(session.get("session_id", ""))
@@ -294,7 +360,7 @@ async def chat_agent(req: ChatStreamRequest):
     try:
         logger.info(f"Agent诊断 | user={req.user_id}, session={req.session_id}")
 
-        agent = create_cnc_agent(req.user_id)
+        agent = create_cnc_agent(req.user_id, req.session_id)
 
         async def sse_generator():
             full_answer = ""
@@ -340,6 +406,14 @@ async def chat_agent(req: ChatStreamRequest):
                         name = event.get("name", "")
                         output = str(event.get("data", {}).get("output", ""))[:200]
                         yield f"data: {json.dumps({'type': 'tool_end', 'tool': name, 'label': _tool_label(name), 'output': output}, ensure_ascii=False)}\n\n"
+                        # sop_manage 调用后立即推送 SOP 状态给前端
+                        if name == "sop_manage":
+                            try:
+                                sop_state = sop_service.get_sop_state(req.session_id)
+                                if sop_state.get("exists"):
+                                    yield f"data: {json.dumps({'type': 'sop_state', 'state': sop_state}, ensure_ascii=False)}\n\n"
+                            except Exception:
+                                pass
                     # LLM 文本输出
                     elif kind == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk", {})
@@ -354,24 +428,55 @@ async def chat_agent(req: ChatStreamRequest):
                             yield f"data: {json.dumps({'type': 'text', 'content': text}, ensure_ascii=False)}\n\n"
 
             except Exception as e:
-                logger.warning(f"Agent异常: {e}")
-                yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+                err_msg = str(e)
+                logger.warning(f"Agent异常: {err_msg}")
+                if full_answer and len(full_answer) > 50:
+                    pass
+                elif "402" in err_msg or "Insufficient Balance" in err_msg:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'DeepSeek API 余额不足(402)，请充值后重试'}, ensure_ascii=False)}\n\n"
+                elif "Expecting value" in err_msg or "line 1 column 1" in err_msg:
+                    yield f"data: {json.dumps({'type': 'error', 'error': '模型返回空响应，正在重试…'}, ensure_ascii=False)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'error': '模型服务暂时不稳定，请重试'}, ensure_ascii=False)}\n\n"
 
             # 从回答文本中解析建议和SOP
             import re as _re2
             suggestions = _parse_suggestions(full_answer)
             if suggestions:
                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions[:3]}, ensure_ascii=False)}\n\n"
+
+            # 自动从 Agent 回复中解析 SOP 状态更新意图并执行
+            _auto_apply_sop_updates(req.session_id, full_answer)
+            # 推送最新状态给前端
+            try:
+                auto_state = sop_service.get_sop_state(req.session_id)
+                if auto_state.get("exists"):
+                    yield f"data: {json.dumps({'type': 'sop_state', 'state': auto_state}, ensure_ascii=False)}\n\n"
+            except Exception:
+                pass
+
             sop_steps = _parse_sop_steps(full_answer)
             if sop_steps:
-                sop_record = sop_service.save_version(
-                    req.session_id,
-                    req.user_id,
-                    req.question,
-                    sop_steps[:8],
-                    full_answer,
-                )
-                yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+                try:
+                    sop_record = sop_service.save_version(
+                        req.session_id,
+                        req.user_id,
+                        req.question,
+                        sop_steps[:8],
+                        full_answer,
+                    )
+                    # 注入 Agent 通过 sop_manage 维护的步骤状态
+                    state = sop_service.get_sop_state(req.session_id)
+                    if state.get("exists"):
+                        sop_record["current_step"] = state.get("current_step", 1)
+                        sop_record["all_done"] = state.get("all_done", False)
+                        for i, s in enumerate(sop_record.get("steps", [])):
+                            if i < len(state.get("steps", [])):
+                                s["step_status"] = state["steps"][i].get("status", "pending")
+                                s["step_note"] = state["steps"][i].get("note", "")
+                    yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    logger.warning(f"save_version 失败: {e}")
 
             # 发送 token 用量
             if token_usage["total"] > 0:

@@ -41,7 +41,18 @@ class SopService:
         f = _get_version_file(session_id)
         if not f.exists():
             return []
-        return json.loads(f.read_text(encoding="utf-8"))
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
+            # 文件损坏或不存在时备份并重置
+            import shutil
+            try:
+                backup = f.with_suffix(".json.corrupted")
+                if f.exists():
+                    shutil.move(str(f), str(backup))
+            except Exception:
+                pass
+            return []
 
     def get_latest(self, session_id: str) -> dict | None:
         """获取最新版本。"""
@@ -65,7 +76,21 @@ class SopService:
         base_steps = latest.get("steps", []) if latest and same_issue else []
         base_notes = latest.get("notes", []) if latest and same_issue else []
         cleaned_steps, notes = self._split_steps_and_notes(steps)
-        merged_steps = self._merge_steps(base_steps, cleaned_steps)
+        # 同一故障且有原步骤 → 保持原步骤不变；否则合并
+        if same_issue and base_steps:
+            merged_steps = list(base_steps)
+        else:
+            merged_steps = self._merge_steps(base_steps, cleaned_steps)
+        # 保留 Agent 通过 sop_manage 维护的步骤状态（按索引匹配）
+        old_statuses = []
+        if latest and same_issue:
+            for s in latest.get("steps", []):
+                old_statuses.append((s.get("step_status", "pending"), s.get("step_note", "")))
+        for i, s in enumerate(merged_steps):
+            if i < len(old_statuses):
+                s["step_status"], s["step_note"] = old_statuses[i]
+            elif "step_status" not in s:
+                s["step_status"] = "pending"
         merged_notes = self._merge_notes(base_notes, notes)
         version = len(versions) + 1
         now = datetime.now(timezone.utc).isoformat()
@@ -179,7 +204,7 @@ class SopService:
                 continue
             seen.add(fp)
             filtered.append(step)
-        filtered.sort(key=lambda s: (_STAGE_ORDER.get(s.get("step_type", ""), 999), s.get("step_order", 999)))
+        filtered.sort(key=lambda s: s.get("step_order", 999))
         for order, step in enumerate(filtered, 1):
             step["step_order"] = order
         return filtered
@@ -259,6 +284,11 @@ class SopService:
             decision, confidence, reason = "new", 0.96, "故障代码变化"
         elif explicit_new and self._similarity(prev, features) < 0.45:
             decision, confidence, reason = "new", 0.84, "用户明确切换问题且语义差异较大"
+        # 追问确认短语 → 必为同一故障的后续
+        elif re.search(r"已(执行|完成|做完|修好|修复|排查|弄好|搞定)|维修成功|寻参成功|步骤.*(完成|做完|OK|ok)|上述|刚才|继续|然后|接下来|全部完成|所有步骤", question):
+            decision, confidence, reason = "same", 0.9, "用户确认/追问，同一故障"
+            sop_id = latest.get("sop_id") or sop_id
+            fingerprint = latest.get("issue_fingerprint") or fingerprint
         else:
             sim = self._similarity(prev, features)
             if sim >= 0.42:
@@ -363,7 +393,7 @@ class SopService:
         _INDEX_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def get_iteration_context(self, session_id: str) -> str:
-        """生成注入 Agent 的上下文：上一版 SOP + 对话摘要。"""
+        """生成注入 Agent 的上下文：上一版 SOP + 对话摘要 + 步骤状态。"""
         latest = self.get_latest(session_id)
         if not latest or not latest.get("steps"):
             return ""
@@ -371,13 +401,83 @@ class SopService:
             "【上轮已生成的 SOP（请基于此增量优化，不要删除已有步骤）】",
         ]
         for i, s in enumerate(latest["steps"], 1):
-            lines.append(f"{i}. [{s.get('title','')}] {s.get('desc','')}")
+            status = s.get("step_status", "pending")
+            icon = {"done": "✅", "in_progress": "🔄", "pending": "⬜"}.get(status, "⬜")
+            lines.append(f"{icon} {i}. [{s.get('title','')}] {s.get('desc','')} ({status})")
         notes = latest.get("notes") or []
         if notes:
             lines.append("【操作规范与安全要求（不是普通步骤，不要编号到步骤列表）】")
             for n in notes:
                 lines.append(f"- {n.get('title', '')}: {n.get('content', '')}")
         return "\n".join(lines)
+
+    def update_step_status(self, session_id: str, step_index: int, status: str, note: str = "") -> dict | None:
+        """更新指定步骤的状态 (pending/in_progress/done) 并返回最新 SOP。"""
+        versions = self.get_versions(session_id)
+        if not versions:
+            return None  # SOP 尚未创建，等 save_version 从文本解析
+        latest = versions[-1]
+        steps = latest.get("steps", [])
+        if step_index < 1 or step_index > len(steps):
+            return None  # 步骤索引超出范围
+        steps[step_index - 1]["step_status"] = status
+        if note:
+            steps[step_index - 1]["step_note"] = note
+
+        # 推进 current_step
+        if status == "done":
+            next_idx = step_index + 1
+            latest["current_step"] = next_idx if next_idx <= len(steps) else -1
+        elif status == "in_progress":
+            latest["current_step"] = step_index
+
+        latest["updated_at"] = datetime.now(timezone.utc).isoformat()
+        f = _get_version_file(session_id)
+        f.write_text(json.dumps(versions, ensure_ascii=False, indent=2), encoding="utf-8")
+        return latest
+
+    def batch_update_steps(self, session_id: str, updates: list[tuple[int, str, str]]) -> dict | None:
+        """批量更新步骤状态，一次写入。SOP 不存在时返回 None。"""
+        versions = self.get_versions(session_id)
+        if not versions:
+            return None
+        latest = versions[-1]
+        steps = latest.get("steps", [])
+        for step_index, status, note in updates:
+            if 1 <= step_index <= len(steps):
+                steps[step_index - 1]["step_status"] = status
+                if note:
+                    steps[step_index - 1]["step_note"] = note
+        latest["updated_at"] = datetime.now(timezone.utc).isoformat()
+        f = _get_version_file(session_id)
+        f.write_text(json.dumps(versions, ensure_ascii=False, indent=2), encoding="utf-8")
+        return latest
+
+    def get_sop_state(self, session_id: str) -> dict:
+        """获取当前 SOP 完整状态（供 Agent 工具查询）。"""
+        latest = self.get_latest(session_id)
+        if not latest:
+            return {"exists": False, "sop_id": ""}
+        steps = []
+        for s in latest.get("steps", []):
+            steps.append({
+                "index": s.get("step_order", 0),
+                "title": s.get("title", ""),
+                "desc": s.get("desc", ""),
+                "status": s.get("step_status", "pending"),
+                "note": s.get("step_note", ""),
+            })
+        return {
+            "exists": True,
+            "sop_id": latest.get("sop_id", ""),
+            "session_id": session_id,
+            "fault": latest.get("question", ""),
+            "device_model": latest.get("device_model", ""),
+            "current_step": latest.get("current_step", 1),
+            "total_steps": len(steps),
+            "all_done": all(s["status"] == "done" for s in steps),
+            "steps": steps,
+        }
 
     def export_final(self, session_id: str) -> dict | None:
         """导出最终版 SOP（所有版本合并去重）。"""

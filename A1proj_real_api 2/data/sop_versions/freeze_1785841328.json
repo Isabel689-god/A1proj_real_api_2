@@ -1,0 +1,98 @@
+[
+  {
+    "version": 1,
+    "sop_id": "sop_aee1da3f23e6",
+    "parent_sop_id": null,
+    "session_id": "freeze_1785841328",
+    "user_id": "a",
+    "question": "主轴异响",
+    "answer_preview": "ans1",
+    "steps": [
+      {
+        "title": "步骤 1",
+        "desc": "Agent 实时创建步骤 1",
+        "step_order": 1,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": ""
+      }
+    ],
+    "notes": [],
+    "issue_fingerprint": "主轴|异响",
+    "fault_code": "",
+    "device_model": "",
+    "sop_status": "active",
+    "classification": {
+      "decision": "new",
+      "confidence": 1.0,
+      "reason": "当前会话尚无 SOP",
+      "fingerprint": "主轴|异响",
+      "sop_id": "sop_aee1da3f23e6",
+      "features": {
+        "fault_code": "",
+        "device_model": "",
+        "component": "主轴",
+        "intent": "异响",
+        "tokens": [
+          "ans1",
+          "主轴",
+          "主轴异响",
+          "异响",
+          "轴异"
+        ]
+      },
+      "needs_confirmation": false
+    },
+    "created_at": "2026-08-04T11:02:08.328618+00:00",
+    "updated_at": "2026-08-04T11:02:08.336269+00:00",
+    "trace_id": "freeze_1785841328:v1",
+    "current_step": -1
+  },
+  {
+    "version": 2,
+    "sop_id": "sop_aee1da3f23e6",
+    "parent_sop_id": null,
+    "session_id": "freeze_1785841328",
+    "user_id": "a",
+    "question": "已完成",
+    "answer_preview": "ans2",
+    "steps": [
+      {
+        "title": "步骤 1",
+        "desc": "Agent 实时创建步骤 1",
+        "step_order": 1,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": ""
+      }
+    ],
+    "notes": [],
+    "issue_fingerprint": "主轴|异响",
+    "fault_code": "",
+    "device_model": "",
+    "sop_status": "active",
+    "classification": {
+      "decision": "same",
+      "confidence": 0.9,
+      "reason": "用户确认/追问，同一故障",
+      "fingerprint": "主轴|异响",
+      "sop_id": "sop_aee1da3f23e6",
+      "features": {
+        "fault_code": "",
+        "device_model": "",
+        "component": "",
+        "intent": "",
+        "tokens": [
+          "ans2",
+          "完成",
+          "已完",
+          "已完成"
+        ]
+      },
+      "needs_confirmation": false
+    },
+    "created_at": "2026-08-04T11:02:08.340634+00:00",
+    "updated_at": "2026-08-04T11:02:08.340634+00:00",
+    "trace_id": "freeze_1785841328:v2"
+  }
+]

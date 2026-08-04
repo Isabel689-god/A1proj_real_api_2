@@ -1,0 +1,192 @@
+[
+  {
+    "version": 1,
+    "sop_id": "sop_f073da0ad963",
+    "session_id": "session_1785844194913",
+    "user_id": "",
+    "question": "Agent 实时创建",
+    "steps": [
+      {
+        "title": "步骤 4",
+        "desc": "AP状态已检查",
+        "step_order": 1,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": "自动"
+      }
+    ],
+    "notes": [],
+    "current_step": -1,
+    "created_at": "2026-08-04T11:50:44.812958+00:00",
+    "updated_at": "2026-08-04T11:50:54.962521+00:00",
+    "classification": {
+      "decision": "new",
+      "features": {},
+      "fingerprint": "agent_placeholder"
+    }
+  },
+  {
+    "version": 2,
+    "sop_id": "sop_f073da0ad963",
+    "parent_sop_id": null,
+    "session_id": "session_1785844194913",
+    "user_id": "senior_01",
+    "question": "前面步骤已经完成，但如何用水平尺检查波导与轨道平行度，确认平行，观察是否恢复运行这步不太会，讲讲",
+    "answer_preview": "我先查询当前SOP状态，并搜索相关知识库。用户说\"前面步骤已经完成\"，我需要更新SOP状态。用户明确表示前面步骤已完成，但第7步（水平尺检查波导与轨道平行度）不太会。让我先更新前面步骤为done，第7步设为in_progress。\n\n用户说\"前面步骤已经完成\"，即步骤1-6已完成。第7步正在询问操作方法，设为in_progress。我注意到SOP状态更新出现了异常——多个update调用互相覆盖，",
+    "steps": [
+      {
+        "title": "步骤 1",
+        "desc": "选取波导两端及中间至少3个测量点",
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": "自动"
+      },
+      {
+        "title": "步骤 2",
+        "desc": "将水平尺水平贴合轨道基准面记录气泡位置",
+        "step_type": "record",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 3",
+        "desc": "平移水平尺至波导对应位置贴合表面",
+        "step_type": "initial_check",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 4",
+        "desc": "对比气泡偏移方向与量值判断平行度",
+        "step_type": "initial_check",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 5",
+        "desc": "用塞尺测量波导与轨道间隙差记录偏差",
+        "step_type": "record",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 6",
+        "desc": "偏差超1格时松开支架螺栓微调找正",
+        "step_type": "initial_check",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 7",
+        "desc": "对角紧固螺栓后复测确认平行",
+        "step_type": "initial_check",
+        "step_status": "pending"
+      },
+      {
+        "title": "步骤 8",
+        "desc": "复位吊具观察是否恢复运行",
+        "step_type": "reset_recovery",
+        "step_status": "pending"
+      }
+    ],
+    "notes": [],
+    "issue_fingerprint": "1|6|7|done|i|in_progress|sop|update|不太|不太会|与轨|个更",
+    "fault_code": "",
+    "device_model": "",
+    "sop_status": "active",
+    "classification": {
+      "decision": "same",
+      "confidence": 0.9,
+      "reason": "用户确认/追问，同一故障",
+      "fingerprint": "1|6|7|done|i|in_progress|sop|update|不太|不太会|与轨|个更",
+      "sop_id": "sop_f073da0ad963",
+      "features": {
+        "fault_code": "",
+        "device_model": "",
+        "component": "",
+        "intent": "",
+        "tokens": [
+          "1",
+          "6",
+          "7",
+          "done",
+          "i",
+          "in_progress",
+          "sop",
+          "update",
+          "不太",
+          "不太会",
+          "与轨",
+          "个更",
+          "个步",
+          "串行",
+          "为并",
+          "了异",
+          "了竞",
+          "于并",
+          "互相",
+          "但如",
+          "但如何用水平尺检查波导与轨道平行度",
+          "但第",
+          "何用",
+          "作方",
+          "先创",
+          "先更",
+          "先查",
+          "免竞",
+          "关知",
+          "出现",
+          "创建",
+          "前状",
+          "前面",
+          "前面步骤已经完成",
+          "即步",
+          "即步骤",
+          "发生",
+          "后逐",
+          "否恢",
+          "因为",
+          "因并",
+          "在我",
+          "在询",
+          "地更",
+          "地重",
+          "复运",
+          "多个",
+          "太会",
+          "如何",
+          "完成",
+          "察是",
+          "导与",
+          "导致",
+          "导致竞态问题",
+          "尺检",
+          "已完",
+          "已完成",
+          "已经",
+          "平尺",
+          "平行",
+          "并搜",
+          "并搜索相关知识库",
+          "并正",
+          "并正确更新",
+          "并行",
+          "建了",
+          "建正",
+          "建立",
+          "异常",
+          "当前",
+          "态因",
+          "态更",
+          "态错",
+          "态问",
+          "恢复",
+          "意到",
+          "我先",
+          "我先查询当前",
+          "我注",
+          "我注意到"
+        ]
+      },
+      "needs_confirmation": false
+    },
+    "created_at": "2026-08-04T11:50:54.966080+00:00",
+    "updated_at": "2026-08-04T11:50:54.966080+00:00",
+    "trace_id": "session_1785844194913:v2"
+  }
+]

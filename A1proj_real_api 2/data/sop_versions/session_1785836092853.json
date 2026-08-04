@@ -1,0 +1,36 @@
+[
+  {
+    "version": 1,
+    "sop_id": "sop_cc30391d152d",
+    "session_id": "session_1785836092853",
+    "user_id": "",
+    "question": "Agent 实时创建",
+    "steps": [
+      {
+        "title": "步骤 5",
+        "desc": "拉绳编码器检查完成",
+        "step_order": 1,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": "拉绳编码器检查完成"
+      },
+      {
+        "title": "步骤 2",
+        "desc": "Agent 实时创建步骤 2",
+        "step_order": 2,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": "SEW监控软件已观察差值"
+      }
+    ],
+    "notes": [],
+    "current_step": -1,
+    "created_at": "2026-08-04T09:35:40.940388+00:00",
+    "updated_at": "2026-08-04T09:35:40.954493+00:00",
+    "classification": {
+      "decision": "new",
+      "features": {},
+      "fingerprint": "agent_placeholder"
+    }
+  }
+]

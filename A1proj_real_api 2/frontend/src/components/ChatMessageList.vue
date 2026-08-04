@@ -270,6 +270,15 @@ watch(() => store.messages.length, () => {
   background: var(--bg-hover);
 }
 
+:deep(.gemini-markdown h2) {
+  color: var(--primary-light) !important;
+  font-size: 17px;
+  font-weight: 700;
+  margin: 18px 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-glass);
+}
+
 :deep(.gemini-markdown h3),
 :deep(.gemini-markdown .cn-heading) {
   color: var(--primary-light) !important;
@@ -459,5 +468,25 @@ watch(() => store.messages.length, () => {
   background: var(--bg-hover);
   border-color: var(--primary-color);
   color: var(--primary-color);
+}
+</style>
+
+<style>
+/* v-html 全局样式 — scoped 无法穿透 innerHTML */
+.gemini-markdown h2 {
+  color: #00c8b4 !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  margin: 20px 0 10px 0 !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid rgba(0,200,180,0.3) !important;
+}
+.gemini-markdown h3 {
+  color: #00c8b4 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin: 16px 0 8px 0 !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid rgba(0,200,180,0.3) !important;
 }
 </style>

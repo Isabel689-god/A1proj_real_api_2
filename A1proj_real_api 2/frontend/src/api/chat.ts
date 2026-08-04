@@ -3,7 +3,7 @@ import type { Source } from '../types/chat';
 
 // 流式输出块类型定义（建议同步添加到 types/chat.ts 中）
 export interface StreamChunk {
-  type: 'text' | 'sources' | 'done' | 'error' | 'vision' | 'fault_localization' | 'tool_start' | 'tool_end' | 'suggestions' | 'sop_steps' | 'sop_version' | 'token_usage';
+  type: 'text' | 'sources' | 'done' | 'error' | 'vision' | 'fault_localization' | 'tool_start' | 'tool_end' | 'suggestions' | 'sop_steps' | 'sop_version' | 'sop_state' | 'token_usage';
   content?: string;
   sources?: Source[];
   error?: string;
@@ -16,6 +16,7 @@ export interface StreamChunk {
   steps?: Array<{ title: string; desc: string; [key: string]: any }>;
   sop?: { version: number; steps: Array<{ title: string; desc: string; [key: string]: any }>; updated_at?: string; created_at?: string };
   sop_full?: string;
+  state?: any;
   usage?: { prompt: number; completion: number; total: number };
   result?: { step: number; status: string; message: string };
 }

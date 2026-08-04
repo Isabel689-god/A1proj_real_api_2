@@ -6,7 +6,7 @@
         <span class="collapse-icon">{{ sopExpanded ? '▼' : '▶' }}</span>
       </div>
       <div v-show="sopExpanded">
-        <SopFlow v-model:activeStep="activeStep" @all-completed="handleAllStepsCompleted" />
+        <SopFlow @all-done="isAllDone = $event" />
       </div>
     </div>
 
@@ -18,7 +18,7 @@
       <div v-show="reportExpanded">
         <RepairReport
           v-if="store.hasPermission('submit_report')"
-          :isEnabled="isAllStepsCompleted"
+          :isEnabled="isAllDone"
           :orderId="currentOrderId"
           :dispatchTime="dispatchTime"
           @report-submitted="handleReportSubmit"
@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import SopFlow from './SopFlow.vue';
 import RepairReport from './RepairReport.vue';
 import { useChatStore } from '../stores/chat';
@@ -49,10 +49,9 @@ const emit = defineEmits<{
   (e: 'report-submitted', report: any): void;
 }>();
 
-const activeStep = ref(0);
-const isAllStepsCompleted = ref(false);
 const sopExpanded = ref(true);
 const reportExpanded = ref(true);
+const isAllDone = ref(false);
 
 const currentOrderId = computed(() => props.sessionId);
 const dispatchTime = computed(() => {
@@ -61,23 +60,13 @@ const dispatchTime = computed(() => {
   return date.toLocaleString('zh-CN');
 });
 
-watch(() => props.sessionId, () => {
-  activeStep.value = 0;
-  isAllStepsCompleted.value = false;
-});
-
-const handleAllStepsCompleted = () => {
-  isAllStepsCompleted.value = true;
-};
-
 const handleReportSubmit = () => {
   const report = {
     orderId: currentOrderId.value,
     dispatchTime: dispatchTime.value,
     submitTime: new Date().toLocaleString('zh-CN'),
     deviceModel: props.deviceModel || '未指定',
-    messages: [...props.messages],
-    stepCount: activeStep.value
+    messages: [...props.messages]
   };
   emit('report-submitted', report);
 };

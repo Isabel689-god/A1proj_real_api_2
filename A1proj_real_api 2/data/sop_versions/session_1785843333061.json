@@ -1,0 +1,28 @@
+[
+  {
+    "version": 1,
+    "sop_id": "sop_49b8f560f3c1",
+    "session_id": "session_1785843333061",
+    "user_id": "",
+    "question": "Agent 实时创建",
+    "steps": [
+      {
+        "title": "步骤 3",
+        "desc": "检查AP指示灯及工作状态正常",
+        "step_order": 1,
+        "step_type": "initial_check",
+        "step_status": "done",
+        "step_note": "人工遥控吊具移出信号弱区域"
+      }
+    ],
+    "notes": [],
+    "current_step": -1,
+    "created_at": "2026-08-04T11:37:54.820726+00:00",
+    "updated_at": "2026-08-04T11:37:59.245462+00:00",
+    "classification": {
+      "decision": "new",
+      "features": {},
+      "fingerprint": "agent_placeholder"
+    }
+  }
+]

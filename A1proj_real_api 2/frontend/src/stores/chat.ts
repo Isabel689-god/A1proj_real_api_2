@@ -29,7 +29,8 @@ export const useChatStore = defineStore('chat', {
     group: (savedAuth.group || '') as string,
     permissions: (savedAuth.permissions || []) as string[],
 
-    globalReports: JSON.parse(localStorage.getItem('INDUSTRIAL_GLOBAL_REPORTS') || '[]') as Array<any>
+    globalReports: JSON.parse(localStorage.getItem('INDUSTRIAL_GLOBAL_REPORTS') || '[]') as Array<any>,
+    sopTick: 0,  // SOP 变更计数器，强制前端刷新
     });
   },
   getters: {
@@ -246,6 +247,37 @@ export const useChatStore = defineStore('chat', {
             case 'sop_version':
               targetMsg.current_sop = chunk.sop;
               targetMsg.sop_steps = chunk.sop?.steps || targetMsg.sop_steps || [];
+              console.log('sop_version received', chunk.sop?.steps?.map((s:any) => s.step_status || '?'));
+              this.sopTick++;
+              break;
+            case 'sop_state':
+              // Agent 实时更新 SOP 步骤状态 — 当前消息无 current_sop 时从 state 构建
+              if (chunk.state?.steps) {
+                if (!targetMsg.current_sop) {
+                  targetMsg.current_sop = {
+                    version: 1,
+                    steps: chunk.state.steps.map((s: any) => ({
+                      title: s.title || '',
+                      desc: s.desc || '',
+                      step_status: s.status || 'pending',
+                      step_note: s.note || '',
+                    })),
+                    current_step: chunk.state.current_step || 1,
+                    all_done: chunk.state.all_done || false,
+                  };
+                } else {
+                  const stateSteps = chunk.state.steps;
+                  const sopSteps = targetMsg.current_sop.steps || [];
+                  for (let i = 0; i < Math.min(sopSteps.length, stateSteps.length); i++) {
+                    sopSteps[i].step_status = stateSteps[i].status;
+                    sopSteps[i].step_note = stateSteps[i].note;
+                  }
+                  targetMsg.current_sop.current_step = chunk.state.current_step;
+                  targetMsg.current_sop.all_done = chunk.state.all_done;
+                }
+                targetMsg.current_sop = { ...targetMsg.current_sop };
+              }
+              this.sopTick++;
               break;
             case 'token_usage':
               targetMsg.token_usage = chunk.usage;

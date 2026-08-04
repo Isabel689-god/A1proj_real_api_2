@@ -1,0 +1,123 @@
+[
+  {
+    "version": 1,
+    "sop_id": "sop_045da4508953",
+    "parent_sop_id": null,
+    "session_id": "pat_1785843235",
+    "user_id": "a",
+    "question": "故障",
+    "answer_preview": "ans",
+    "steps": [
+      {
+        "title": "s1",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 1,
+        "step_title": "s1",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      },
+      {
+        "title": "s2",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 2,
+        "step_title": "s2",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      },
+      {
+        "title": "s3",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 3,
+        "step_title": "s3",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      },
+      {
+        "title": "s4",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 4,
+        "step_title": "s4",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      },
+      {
+        "title": "s5",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 5,
+        "step_title": "s5",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      },
+      {
+        "title": "s6",
+        "desc": "x",
+        "step_type": "initial_check",
+        "step_order": 6,
+        "step_title": "s6",
+        "step_description": "x",
+        "safety_level": "normal",
+        "tools": [],
+        "expected_result": "",
+        "warning": "",
+        "source_reference": "",
+        "step_status": "pending"
+      }
+    ],
+    "notes": [],
+    "issue_fingerprint": "ans|故障",
+    "fault_code": "",
+    "device_model": "",
+    "sop_status": "active",
+    "classification": {
+      "decision": "new",
+      "confidence": 1.0,
+      "reason": "当前会话尚无 SOP",
+      "fingerprint": "ans|故障",
+      "sop_id": "sop_045da4508953",
+      "features": {
+        "fault_code": "",
+        "device_model": "",
+        "component": "",
+        "intent": "",
+        "tokens": [
+          "ans",
+          "故障"
+        ]
+      },
+      "needs_confirmation": false
+    },
+    "created_at": "2026-08-04T11:33:55.129600+00:00",
+    "updated_at": "2026-08-04T11:33:55.129600+00:00",
+    "trace_id": "pat_1785843235:v1"
+  }
+]

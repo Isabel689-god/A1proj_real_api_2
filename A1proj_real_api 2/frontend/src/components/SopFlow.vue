@@ -1,34 +1,32 @@
 <template>
   <div class="sop-flow">
     <div class="sop-header">
-      <h4>📋 动态检修作业指引 (<span class="text-accent">SOP</span>)</h4>
+      <h4>📋 标准检修作业指引 (<span class="text-accent">SOP</span>)</h4>
       <p class="sub-title">{{ sopMeta }}</p>
     </div>
     <div class="steps-wrapper" v-if="dynamicSteps.length > 0">
-      <el-steps direction="vertical" :active="activeStep" finish-status="success">
-        <el-step v-for="(step, index) in dynamicSteps" :key="index" :title="step.title">
+      <el-steps direction="vertical" :active="currentStepIndex" finish-status="success">
+        <el-step
+          v-for="(step, index) in dynamicSteps"
+          :key="index"
+          :title="step.title"
+          :status="step.statusClass"
+        >
           <template #description>
             <div class="step-desc-content">
               <div class="ai-instruction">{{ step.desc }}</div>
               <el-button size="small" type="primary" link @click="showDemo(step)" style="margin-top:4px;">🎬 演示动画</el-button>
-              <div v-if="activeStep === index" class="step-action-zone">
-                <el-radio-group v-model="step.selectedOption" class="cyber-radio-group">
-                  <el-radio v-for="opt in step.options" :key="opt" :label="opt">{{ opt }}</el-radio>
-                </el-radio-group>
-                <el-button type="primary" size="small" class="next-action-btn"
-                  :disabled="!step.selectedOption" @click="nextStep">
-                  确认记录并进入下一步
-                </el-button>
-              </div>
-              <div v-else-if="activeStep > index" class="completed-badge">
-                <el-icon><Check /></el-icon>
-                <span>操作结果: {{ step.selectedOption }}</span>
+              <div class="step-status-line">
+                <el-tag v-if="step._status === 'done'" type="success" size="small" effect="dark">✅ 已完成</el-tag>
+                <el-tag v-else-if="step._status === 'in_progress'" type="warning" size="small" effect="dark">🔄 Agent判定:进行中</el-tag>
+                <el-tag v-else type="info" size="small" effect="plain">⬜ 待执行</el-tag>
+                <span v-if="step._note" class="step-note">— {{ step._note }}</span>
               </div>
             </div>
           </template>
         </el-step>
-        <el-step title="归档与复位" v-if="activeStep >= dynamicSteps.length">
-          <template #description><p class="text-green">所有检修步骤均已确认完毕。</p></template>
+        <el-step title="检修完成" v-if="allDone" status="success">
+          <template #description><p class="text-green">Agent 判定：全部步骤已完成。</p></template>
         </el-step>
       </el-steps>
       <div v-if="sopNotes.length" class="sop-notes">
@@ -41,9 +39,9 @@
     </div>
     <div v-else class="empty-state">
       <div class="radar-scan"></div>
-      <p>等待 AI 生成标准化排障步骤...</p>
+      <p>等待 Agent 生成标准化排障步骤...</p>
     </div>
-      <!-- 动画演示弹窗 -->
+    <!-- 动画演示弹窗 -->
     <el-dialog v-model="demoVisible" :title="demoTitle" width="95%" top="2vh" destroy-on-close>
       <div v-if="demoLoading" style="text-align:center;padding:60px;color:var(--text-muted);">🎬 正在生成动画...</div>
       <iframe v-else :srcdoc="demoHtml" style="width:100%;height:70vh;border:none;border-radius:8px;" />
@@ -52,46 +50,63 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
-import { Check } from '@element-plus/icons-vue'
 
 const store = useChatStore()
-const props = defineProps<{ activeStep: number }>()
-const emit = defineEmits<{ (e: 'update:activeStep', v: number): void; (e: 'all-completed'): void }>()
-const dynamicSteps = ref<any[]>([]);
-const sopNotes = ref<any[]>([]);
-const sopMeta = ref('根据 AI 分析结果实时生成');
+const emit = defineEmits<{ (e: 'all-done', v: boolean): void }>()
 
-watch(() => store.messages, (msgs) => {
-  const last = [...msgs].reverse().find(m => m.role === 'assistant' && m.status === 'done')
-  const currentSop = last?.current_sop;
-  const steps = currentSop?.steps?.length ? currentSop.steps : last?.sop_steps;
-  if (steps?.length) {
-    dynamicSteps.value = steps.map((s: any, index: number) => ({
-      ...s,
-      title: s.step_title || s.title || `检修步骤 ${index + 1}`,
+const lastAssistantMsg = computed(() => {
+  // 触发 sopTick 强制重新计算
+  void store.sopTick
+  const msgs = store.messages
+  return [...msgs].reverse().find((m: any) => m.role === 'assistant')
+})
+
+const currentSop = computed(() => lastAssistantMsg.value?.current_sop)
+
+const dynamicSteps = computed(() => {
+  const sop = currentSop.value
+  const steps = sop?.steps?.length ? sop.steps : lastAssistantMsg.value?.sop_steps
+  console.log('SopFlow computed:', steps?.length, steps?.map((s:any) => s.step_status || s.status || '?'))
+  if (!steps?.length) return []
+  return steps.map((s: any) => {
+    const status = s.step_status || s.status || 'pending'
+    return {
+      title: s.step_title || s.title || '',
       desc: s.desc || s.description || '',
-      options: ['✅ 正常', '⚠️ 已修复', '🔧 已更换'],
-      selectedOption: s.selectedOption || ''
-    }))
-    sopNotes.value = (currentSop?.notes || []).map((n: any) => ({
-      title: n.title || '注意事项',
-      content: n.content || ''
-    })).filter((n: any) => n.content)
-    // 显示分类状态：追问补充 vs 新故障
-    const classification = currentSop?.classification
-    const isMerge = classification?.decision === 'same'
-    const decisionLabel = isMerge ? '🔄 追问补充' : '✨ 新故障诊断'
-    const sopId = currentSop?.sop_id ? ` · ${currentSop.sop_id.slice(0, 8)}` : ''
-    sopMeta.value = `${decisionLabel} · v${currentSop.version}${sopId} · ${formatTime(currentSop.updated_at || currentSop.created_at)}`
-    emit('update:activeStep', 0)
-  } else if (!last) {
-    dynamicSteps.value = []
-    sopNotes.value = []
-    sopMeta.value = '根据 AI 分析结果实时生成'
-  }
-}, { deep: true, immediate: true })
+      _status: status,
+      _note: s.step_note || s.note || '',
+      statusClass: status === 'done' ? 'success' : status === 'in_progress' ? 'process' : 'wait',
+    }
+  })
+})
+
+const sopNotes = computed(() => {
+  return (currentSop.value?.notes || []).map((n: any) => ({
+    title: n.title || '注意事项',
+    content: n.content || ''
+  })).filter((n: any) => n.content)
+})
+
+const sopMeta = computed(() => {
+  const sop = currentSop.value
+  if (!sop) return 'Agent 实时生成 · 状态由 Agent 自动同步'
+  const classification = sop.classification
+  const isMerge = classification?.decision === 'same'
+  const decisionLabel = isMerge ? '🔄 追问补充' : '✨ 新故障诊断'
+  const sopId = sop.sop_id ? ` · ${sop.sop_id.slice(0, 8)}` : ''
+  const t = sop.updated_at || sop.created_at
+  const timeStr = t ? new Date(t).toLocaleString('zh-CN') : '刚刚更新'
+  return `${decisionLabel} · v${sop.version}${sopId} · ${timeStr}`
+})
+
+const allDone = computed(() => currentSop.value?.all_done || false)
+const currentStepIndex = computed(() => (currentSop.value?.current_step || 1) - 1)
+
+// 监听 allDone 变化，emit 给父组件
+import { watch } from 'vue'
+watch(allDone, (v) => emit('all-done', v))
 
 const formatTime = (value?: string) => {
   if (!value) return '刚刚更新'
@@ -113,19 +128,13 @@ const showDemo = async (step: any) => {
   demoLoading.value = true
   try {
     const res = await fetch(`${API_BASE}/animation/generate`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({step_desc: step.desc, step_title: step.title})
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step_desc: step.desc, step_title: step.title })
     })
     const data = await res.json()
     step._animHtml = data.html
     demoHtml.value = data.html
   } catch { demoVisible.value = false } finally { demoLoading.value = false }
-}
-
-const nextStep = () => {
-  const n = props.activeStep + 1
-  emit('update:activeStep', n)
-  if (n >= dynamicSteps.value.length) emit('all-completed')
 }
 </script>
 
@@ -143,12 +152,8 @@ const nextStep = () => {
 :deep(.el-step__title.is-success){color:var(--success)!important}
 .step-desc-content{margin-top:8px;margin-bottom:16px}
 .ai-instruction{font-size:13px;line-height:1.6;color:var(--text-primary);background:var(--bg-soft);padding:10px 12px;border-radius:6px;border-left:2px solid var(--primary-color)}
-.step-action-zone{margin-top:12px;background:var(--bg-soft);padding:12px;border-radius:8px;border:1px dashed var(--border-light)}
-.cyber-radio-group{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-:deep(.el-radio){color:var(--text-secondary);margin-right:0;display:flex;align-items:center}
-:deep(.el-radio .el-radio__label){padding-left:6px;font-size:13px}
-.next-action-btn{width:100%;border-radius:6px;background:var(--theme-gradient);border:none}
-.completed-badge{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--success);background:color-mix(in srgb, var(--success) 12%, transparent);padding:6px 10px;border-radius:4px}
+.step-status-line{margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px}
+.step-note{color:var(--text-muted);font-size:12px}
 .sop-notes{margin-top:14px;padding:12px;border:1px solid var(--border-glass);border-radius:8px;background:var(--bg-soft)}
 .notes-title{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:8px}
 .note-item{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary);padding:8px 0;border-top:1px solid var(--border-glass)}

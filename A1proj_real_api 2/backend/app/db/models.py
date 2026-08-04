@@ -124,3 +124,20 @@ class Message(Base):
     role = Column(String(32), nullable=False)
     content = Column(Text, default="")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class MaintenanceRecord(Base):
+    __tablename__ = "sys_maintenance_record"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    record_id = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    device_model = Column(String(255), default="")
+    fault_type = Column(String(255), default="")
+    repair_date = Column(String(32), default="")
+    technician = Column(String(64), default="")
+    description = Column(Text, default="")
+    solution = Column(Text, default="")
+    parts_replaced = Column(Text, default="")
+    status = Column(String(20), default="已完成")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

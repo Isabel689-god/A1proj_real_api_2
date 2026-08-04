@@ -81,6 +81,21 @@
         </svg>
         <span v-if="!isCollapsed">直接上传手册</span>
       </button>
+
+      <button
+        @click="showMaintenanceDrawer = true"
+        :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
+        title="维修记录与总结"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <span v-if="!isCollapsed">维修记录与总结</span>
+      </button>
     </div>
 
     <div class="session-list">
@@ -182,6 +197,8 @@
         <el-button type="primary" :loading="uploading" @click="submitDirectUpload">确认上传</el-button>
       </template>
     </el-dialog>
+
+    <MaintenanceRecordDrawer v-model="showMaintenanceDrawer" />
   </div>
 </template>
 
@@ -191,6 +208,7 @@ import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { ElMessage } from 'element-plus';
 import KnowledgeGraph from './KnowledgeGraph.vue';
+import MaintenanceRecordDrawer from './MaintenanceRecordDrawer.vue';
 
 const theme = inject<any>('theme', ref('dark'))
 const toggleTheme = inject<() => void>('toggleTheme', () => {})
@@ -279,6 +297,7 @@ const equipmentOptions = [
 const showGraphDialog = ref(false);
 const showRequestDialog = ref(false);
 const showDirectUploadDialog = ref(false);
+const showMaintenanceDrawer = ref(false);
 const submittingRequest = ref(false);
 const uploading = ref(false);
 

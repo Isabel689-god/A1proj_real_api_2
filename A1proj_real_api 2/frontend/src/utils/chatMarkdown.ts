@@ -1,24 +1,29 @@
 import MarkdownIt from 'markdown-it';
 
-// 兼容性构造函数获取：防止 Vite 在处理 CommonJS 模块时丢失 default 属性
 const MarkdownConstructor = (MarkdownIt as any).default || MarkdownIt;
 
 const md = new MarkdownConstructor({
-  html: true,        // 允许解析基础 HTML 标签
-  linkify: true,     // 自动将文本中的 URL 链接转为可点击的超链接
-  typographer: true, // 启用智能标点转换
+  html: true,
+  linkify: true,
+  typographer: true,
 });
 
-/**
- * 核心导出函数：将大模型的 Markdown 文本转换为精美的网页 HTML
- * @param text 大模型传回的原始字符串
- */
 export function renderMarkdown(text: string): string {
   if (!text) return '';
   try {
-    return md.render(text);
+    let html = md.render(text);
+    // v-html 内联样式 — 不受 scoped CSS 限制
+    html = html.replace(
+      /<h2>/g,
+      '<h2 style="color:#00c8b4;font-size:18px;font-weight:700;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(0,200,180,0.3)">'
+    );
+    html = html.replace(
+      /<h3>/g,
+      '<h3 style="color:#00c8b4;font-size:16px;font-weight:700;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(0,200,180,0.3)">'
+    );
+    return html;
   } catch (error) {
     console.error('Markdown 渲染失败:', error);
-    return text; // 降级处理：渲染失败则返回原文本，确保不崩溃
+    return text;
   }
 }
