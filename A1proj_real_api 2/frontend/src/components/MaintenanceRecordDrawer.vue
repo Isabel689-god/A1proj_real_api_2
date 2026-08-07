@@ -2,7 +2,7 @@
   <el-drawer
     v-model="visible"
     direction="rtl"
-    size="680px"
+    size="720px"
     class="dark-drawer"
     :with-header="false"
     append-to-body
@@ -25,13 +25,11 @@
           empty-text="暂无维修记录"
           row-class-name="dark-row"
         >
-          <el-table-column prop="device_model" label="设备型号" min-width="110" show-overflow-tooltip />
           <el-table-column prop="fault_type" label="故障类型" min-width="100" show-overflow-tooltip />
-          <el-table-column prop="repair_date" label="维修日期" width="105" />
-          <el-table-column prop="status" label="状态" width="80">
+          <el-table-column prop="fault_resolved" label="解决" width="60">
             <template #default="{ row }">
-              <el-tag :type="row.status === '已完成' ? 'success' : 'warning'" size="small" effect="dark">
-                {{ row.status }}
+              <el-tag :type="row.fault_resolved === '是' ? 'success' : 'danger'" size="small" effect="dark">
+                {{ row.fault_resolved }}
               </el-tag>
             </template>
           </el-table-column>
@@ -62,41 +60,47 @@
     <el-dialog
       v-model="showFormDialog"
       :title="formMode === 'view' ? '查看维修记录' : formMode === 'edit' ? '修改维修记录' : '新增维修记录'"
-      width="560px"
+      width="600px"
       destroy-on-close
       class="dark-dialog"
     >
       <el-form
         ref="formRef"
         :model="form"
-        label-width="85px"
+        label-width="100px"
         :disabled="formMode === 'view'"
       >
-        <el-form-item label="设备型号">
-          <el-input v-model="form.device_model" placeholder="如：SINUMERIK 808D" />
-        </el-form-item>
         <el-form-item label="故障类型">
           <el-input v-model="form.fault_type" placeholder="如：主轴异常" />
         </el-form-item>
-        <el-form-item label="维修日期">
-          <el-input v-model="form.repair_date" placeholder="如：2026-08-04" />
-        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="开始时间">
+              <el-input v-model="form.repair_start_time" placeholder="2026-08-04 09:00" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="结束时间">
+              <el-input v-model="form.repair_end_time" placeholder="2026-08-04 10:30" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="维修人员">
           <el-input v-model="form.technician" :placeholder="store.username || '维修员'" />
         </el-form-item>
         <el-form-item label="故障描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述故障现象" />
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="描述故障现象" />
+        </el-form-item>
+        <el-form-item label="故障原因">
+          <el-input v-model="form.fault_cause" type="textarea" :rows="2" placeholder="分析故障根本原因" />
         </el-form-item>
         <el-form-item label="维修方案">
-          <el-input v-model="form.solution" type="textarea" :rows="3" placeholder="记录维修方案与总结" />
+          <el-input v-model="form.solution" type="textarea" :rows="2" placeholder="记录维修方案与总结" />
         </el-form-item>
-        <el-form-item label="更换配件">
-          <el-input v-model="form.parts_replaced" type="textarea" :rows="2" placeholder="列出更换的配件" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option label="已完成" value="已完成" />
-            <el-option label="进行中" value="进行中" />
+        <el-form-item label="是否解决">
+          <el-select v-model="form.fault_resolved" style="width: 100%">
+            <el-option label="是" value="是" />
+            <el-option label="否" value="否" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -149,6 +153,11 @@ const form = reactive({
   solution: '',
   parts_replaced: '',
   status: '已完成',
+  repair_start_time: '',
+  repair_end_time: '',
+  repair_duration: '',
+  fault_cause: '',
+  fault_resolved: '是',
 })
 
 function resetForm() {
@@ -160,6 +169,11 @@ function resetForm() {
   form.solution = ''
   form.parts_replaced = ''
   form.status = '已完成'
+  form.repair_start_time = ''
+  form.repair_end_time = ''
+  form.repair_duration = ''
+  form.fault_cause = ''
+  form.fault_resolved = '是'
 }
 
 async function fetchRecords() {
@@ -185,14 +199,19 @@ function openCreate() {
 
 function openView(row: any) {
   Object.assign(form, {
-    device_model: row.device_model,
-    fault_type: row.fault_type,
-    repair_date: row.repair_date,
-    technician: row.technician,
-    description: row.description,
-    solution: row.solution,
-    parts_replaced: row.parts_replaced,
-    status: row.status,
+    device_model: row.device_model || '',
+    fault_type: row.fault_type || '',
+    repair_date: row.repair_date || '',
+    technician: row.technician || '',
+    description: row.description || '',
+    solution: row.solution || '',
+    parts_replaced: row.parts_replaced || '',
+    status: row.status || '已完成',
+    repair_start_time: row.repair_start_time || '',
+    repair_end_time: row.repair_end_time || '',
+    repair_duration: row.repair_duration || '',
+    fault_cause: row.fault_cause || '',
+    fault_resolved: row.fault_resolved || '是',
   })
   editingRecordId.value = row.record_id
   formMode.value = 'view'
@@ -200,19 +219,8 @@ function openView(row: any) {
 }
 
 function openEdit(row: any) {
-  Object.assign(form, {
-    device_model: row.device_model,
-    fault_type: row.fault_type,
-    repair_date: row.repair_date,
-    technician: row.technician,
-    description: row.description,
-    solution: row.solution,
-    parts_replaced: row.parts_replaced,
-    status: row.status,
-  })
-  editingRecordId.value = row.record_id
+  openView(row)
   formMode.value = 'edit'
-  showFormDialog.value = true
 }
 
 async function handleSubmit() {
@@ -248,8 +256,8 @@ async function handleSubmit() {
         ElMessage.error(data.detail || '更新失败')
       }
     }
-  } catch {
-    ElMessage.error('操作失败')
+  } catch (e: any) {
+    ElMessage.error('操作失败: ' + (e?.message || e?.toString() || '未知错误'))
   } finally {
     submitting.value = false
   }

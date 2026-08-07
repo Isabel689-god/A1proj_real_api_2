@@ -216,7 +216,7 @@ class SopService:
 
     def _infer_step_type(self, title: str, desc: str) -> str:
         text = f"{title} {desc}"
-        if re.search(r"规范|标准|阈值|绝缘要求|安装偏差|防护要求|注意事项", text):
+        if re.search(r"绝缘要求|安装偏差|防护要求|注意事项", text):
             return "operation_standard"
         if re.search(r"断电|上锁|挂牌|防护|放电|安全|急停", text):
             return "safety_preparation"
@@ -285,8 +285,13 @@ class SopService:
         elif explicit_new and self._similarity(prev, features) < 0.45:
             decision, confidence, reason = "new", 0.84, "用户明确切换问题且语义差异较大"
         # 追问确认短语 → 必为同一故障的后续
-        elif re.search(r"已(执行|完成|做完|修好|修复|排查|弄好|搞定)|维修成功|寻参成功|步骤.*(完成|做完|OK|ok)|上述|刚才|继续|然后|接下来|全部完成|所有步骤", question):
+        elif re.search(r"已(执行|完成|做完|修好|修复|排查|弄好|搞定)|维修成功|寻参成功|步骤.*(完成|做完|OK|ok)|第\s*\d+\s*步|不太会|怎么做|怎么操作|详细说|讲一下|说明一下|解释一下|上述|刚才|继续|然后|接下来|全部完成|所有步骤", question):
             decision, confidence, reason = "same", 0.9, "用户确认/追问，同一故障"
+            sop_id = latest.get("sop_id") or sop_id
+            fingerprint = latest.get("issue_fingerprint") or fingerprint
+        # 已有 SOP 且无非新故障标记 → 默认视为同一故障追问
+        elif latest and latest.get("steps") and not explicit_new:
+            decision, confidence, reason = "same", 0.8, "会话已有SOP，默认同一故障"
             sop_id = latest.get("sop_id") or sop_id
             fingerprint = latest.get("issue_fingerprint") or fingerprint
         else:

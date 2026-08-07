@@ -141,3 +141,11 @@ class MaintenanceRecord(Base):
     status = Column(String(20), default="已完成")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    repair_start_time = Column(DateTime, nullable=True)
+    repair_end_time = Column(DateTime, nullable=True)
+    repair_duration = Column(String(32), default="")
+    fault_cause = Column(Text, default="")
+    fault_resolved = Column(String(10), default="是")
+    synced = Column(String(10), default="未同步")
+    report_order_id = Column(String(128), default="")
+    report_submitted = Column(Integer, default=0)  # 0=未提交, 1=已提交

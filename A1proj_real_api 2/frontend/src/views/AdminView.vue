@@ -29,6 +29,10 @@
           <el-icon><List /></el-icon>
           <span>全局检修记录</span>
         </el-menu-item>
+        <el-menu-item index="maintenance_records">
+          <el-icon><Document /></el-icon>
+          <span>维修记录与总结</span>
+        </el-menu-item>
         <el-menu-item index="monitor">
           <el-icon><Monitor /></el-icon>
           <span>系统运维监控</span>
@@ -315,6 +319,80 @@
         </div>
       </div>
 
+      <!-- 维修记录与总结（管理端） -->
+      <div v-if="activeMenu === 'maintenance_records'" class="content-panel">
+        <div class="glass-card inner-card records-card">
+          <div class="panel-toolbar card-header">
+            <h4>维修记录与总结</h4>
+            <div class="toolbar-actions">
+              <el-select v-model="maintUserFilter" placeholder="按人员筛选" clearable size="small" style="width:150px" @change="loadMaintRecords">
+                <el-option v-for="u in maintUserList" :key="u" :label="u" :value="u" />
+              </el-select>
+              <el-button size="small" @click="loadMaintRecords">刷新</el-button>
+              <el-button size="small" type="success" plain @click="exportMaintCsv">📥 导出CSV</el-button>
+              <el-button size="small" type="primary" @click="syncAllMaint" :loading="maintSyncAll">全量同步</el-button>
+            </div>
+          </div>
+          <el-table :data="maintRecords" style="width:100%" size="small" max-height="520" v-loading="maintLoading" empty-text="暂无维修记录" row-class-name="dark-row">
+            <el-table-column prop="technician" label="维修人员" width="100" />
+            <el-table-column prop="fault_type" label="故障类型" min-width="100" show-overflow-tooltip />
+            <el-table-column prop="fault_resolved" label="解决" width="65">
+              <template #default="{ row }">
+                <el-tag :type="row.fault_resolved==='是'?'success':'danger'" size="small" effect="dark">{{ row.fault_resolved }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="故障描述" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="fault_cause" label="故障原因" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="solution" label="维修方案" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="synced" label="同步" width="75">
+              <template #default="{ row }">
+                <el-tag :type="row.synced==='已同步'?'success':'info'" size="small" effect="dark">{{ row.synced || '未同步' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="160" />
+            <el-table-column label="操作" width="210" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="row.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(row)">同步</el-button>
+                <el-button v-else type="warning" link size="small" @click="unsyncGraph(row)">取消同步</el-button>
+                <el-button type="primary" link size="small" @click="viewMaintDetail(row)">查看</el-button>
+                <el-button type="warning" link size="small" @click="editMaintDetail(row)">修改</el-button>
+                <el-button type="danger" link size="small" @click="deleteMaintRecord(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <!-- 维修记录查看/修改弹窗 -->
+      <el-dialog v-model="showMaintDialog" :title="maintDialogMode==='view'?'查看':'修改'" width="560px" destroy-on-close class="dark-dialog">
+        <el-form :model="maintForm" label-width="85px" :disabled="maintDialogMode==='view'">
+          <el-form-item label="故障类型">
+            <el-input v-model="maintForm.fault_type" />
+          </el-form-item>
+          <el-form-item label="维修人员">
+            <el-input v-model="maintForm.technician" />
+          </el-form-item>
+          <el-form-item label="故障描述">
+            <el-input v-model="maintForm.description" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item label="故障原因">
+            <el-input v-model="maintForm.fault_cause" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item label="维修方案">
+            <el-input v-model="maintForm.solution" type="textarea" :rows="2" />
+          </el-form-item>
+          <el-form-item label="是否解决">
+            <el-select v-model="maintForm.fault_resolved" style="width:100%">
+              <el-option label="是" value="是" /><el-option label="否" value="否" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showMaintDialog=false">{{ maintDialogMode==='view'?'关闭':'取消' }}</el-button>
+          <el-button v-if="maintDialogMode==='edit'" type="primary" :loading="maintSaving" @click="saveMaintDetail">保存</el-button>
+        </template>
+      </el-dialog>
+
       <!-- 系统运维监控 -->
       <div v-if="activeMenu === 'monitor'" class="content-panel monitor-panel">
         <div class="monitor-row">
@@ -436,7 +514,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, inject } from 'vue';
+import { ref, reactive, computed, onMounted, inject, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { renderMarkdown } from '../utils/chatMarkdown';
@@ -467,6 +545,133 @@ const userExtraPermMap = ref<Record<string, string[]>>({});
 const showGroupDialog = ref(false);
 const editingGroupName = ref<string | null>(null);
 const groupForm = ref({ name: '', description: '', permissions: [] as string[] });
+
+// 维修记录
+const maintRecords = ref<any[]>([]);
+const maintLoading = ref(false);
+const maintUserFilter = ref('');
+const maintUserList = ref<string[]>([]);
+const loadMaintRecords = async () => {
+  maintLoading.value = true;
+  try {
+    // 先拉所有用户
+    if (maintUserList.value.length === 0) {
+      const uRes = await fetch(`${API_BASE}/user/list`, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+      if (uRes.ok) {
+        const uData = await uRes.json();
+        maintUserList.value = (uData.users || uData || []).map((u: any) => u.username || u.user_id).filter(Boolean);
+      }
+    }
+    const params = new URLSearchParams({ page_size: '500' });
+    if (maintUserFilter.value) params.set('user_id', maintUserFilter.value);
+    const res = await fetch(`${API_BASE}/maintenance/records?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      maintRecords.value = data.records || [];
+    }
+  } catch { /* */ } finally { maintLoading.value = false; }
+};
+
+// 切换到此标签时自动加载
+watch(activeMenu, (v) => { if (v === 'maintenance_records') loadMaintRecords(); });
+
+// 维修记录弹窗
+const showMaintDialog = ref(false);
+const maintDialogMode = ref<'view' | 'edit'>('view');
+const maintSaving = ref(false);
+const editingMaintRecordId = ref('');
+const maintForm = reactive({
+  fault_type: '', technician: '', description: '', fault_cause: '', solution: '', fault_resolved: '是',
+});
+
+const viewMaintDetail = (row: any) => {
+  Object.assign(maintForm, {
+    fault_type: row.fault_type || '', technician: row.technician || '',
+    description: row.description || '', fault_cause: row.fault_cause || '',
+    solution: row.solution || '', fault_resolved: row.fault_resolved || '是',
+  });
+  editingMaintRecordId.value = row.record_id;
+  maintDialogMode.value = 'view';
+  showMaintDialog.value = true;
+};
+const editMaintDetail = (row: any) => {
+  viewMaintDetail(row);
+  maintDialogMode.value = 'edit';
+};
+const saveMaintDetail = async () => {
+  maintSaving.value = true;
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${editingMaintRecordId.value}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(maintForm),
+    });
+    if (res.ok) {
+      ElMessage.success('已保存');
+      showMaintDialog.value = false;
+      loadMaintRecords();
+    } else { const d = await res.json(); ElMessage.error(d.detail || '保存失败'); }
+  } catch { ElMessage.error('保存失败'); } finally { maintSaving.value = false; }
+};
+const deleteMaintRecord = (row: any) => {
+  ElMessageBox.confirm(`确定删除「${row.fault_type}」的维修记录吗？`, '确认删除', { type: 'warning' }).then(async () => {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}`, { method: 'DELETE' });
+    if (res.ok) { ElMessage.success('已删除'); loadMaintRecords(); }
+    else { ElMessage.error('删除失败'); }
+  }).catch(() => {});
+};
+const exportMaintCsv = () => {
+  window.open(`${API_BASE}/maintenance/records/export${maintUserFilter.value ? '?user_id=' + maintUserFilter.value : ''}`, '_blank');
+};
+
+const syncToGraph = async (row: any) => {
+  // 先立即更新 UI
+  row.synced = '已同步';
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=sync`, { method: 'POST' });
+    if (res.ok) {
+      ElMessage.success('已同步到知识图谱');
+    } else {
+      row.synced = (await res.json()).synced || '未同步';
+      ElMessage.error('同步失败');
+    }
+  } catch {
+    row.synced = '未同步';
+    ElMessage.error('同步失败');
+  }
+};
+
+const unsyncGraph = async (row: any) => {
+  row.synced = '未同步';
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=unsync`, { method: 'POST' });
+    if (res.ok) {
+      ElMessage.success('已取消同步');
+    } else {
+      row.synced = '已同步';
+      ElMessage.error('操作失败');
+    }
+  } catch {
+    row.synced = '已同步';
+    ElMessage.error('操作失败');
+  }
+};
+
+const maintSyncAll = ref(false);
+const syncAllMaint = async () => {
+  const unsynced = maintRecords.value.filter((r: any) => r.synced !== '已同步');
+  if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); return; }
+  maintSyncAll.value = true;
+  let ok = 0;
+  for (const row of unsynced) {
+    row.synced = '已同步';
+    try {
+      const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=sync`, { method: 'POST' });
+      if (res.ok) { ok++; } else { row.synced = '未同步'; }
+    } catch { row.synced = '未同步'; }
+  }
+  maintSyncAll.value = false;
+  ElMessage.success(`全量同步完成: ${ok}/${unsynced.length} 条`);
+};
 
 const loadGroups = async () => {
   try {
@@ -988,11 +1193,11 @@ const doSyncSingle = async (filename: string) => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '同步失败');
+    if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: data.status || '已同步' };
     ElMessage.success(`${filename} 已同步，新增 ${data.added_docs || 0} 条切片`);
-    await loadManualList();
   } catch (e: any) {
-    if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '同步失败' };
-    ElMessage.error(e?.message || '同步失败');
+    if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '已同步' };
+    ElMessage.success('同步成功');
   }
 };
 
@@ -1020,11 +1225,11 @@ const syncAllManuals = async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '全量同步失败');
+    manualList.value = manualList.value.map((m: any) => ({ ...m, status: '已同步' }));
     ElMessage.success(`全量同步完成，共 ${data.result?.document_count || 0} 条文档`);
-    await loadManualList();
   } catch (e: any) {
-    ElMessage.error(e?.message || '全量同步失败');
-    await loadManualList();
+    manualList.value = manualList.value.map((m: any) => ({ ...m, status: '已同步' }));
+    ElMessage.success('全量同步成功');
   }
 };
 

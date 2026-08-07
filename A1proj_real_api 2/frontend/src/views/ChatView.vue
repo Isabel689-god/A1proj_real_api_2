@@ -107,10 +107,19 @@
                   <span class="info-label">交互轮数</span>
                   <el-tag size="small" effect="dark">{{ item.messages?.length || 0 }} 轮</el-tag>
                 </div>
+                <div class="info-item col-round">
+                  <span class="info-label">状态</span>
+                  <el-tag size="small" :type="item.maintenanceAdded ? 'success' : 'warning'" effect="dark">
+                    {{ item.maintenanceAdded ? '已加入' : (item.submitStatus || '已提交') }}
+                  </el-tag>
+                </div>
               </div>
               <div class="card-actions">
                 <el-button size="small" type="primary" link @click="viewHistoryChat(item)">
                   查看完整对话流
+                </el-button>
+                <el-button size="small" type="warning" plain @click="saveToMaintenance(item)">
+                  📝 加入维修记录总结
                 </el-button>
               </div>
             </div>
@@ -136,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useChatStore } from '../stores/chat';
@@ -153,11 +162,122 @@ const handleSuggestionClick = (text: string) => {
   store.sendMessage(text);
 };
 const showUserCenter = ref(false);
+watch(showUserCenter, (v) => { if (v) loadMaintenanceStatus(); });
 const showHistoryDialog = ref(false);
 const rightCollapsed = ref(false);
 const selectedChatHistory = ref<Array<any>>([]);
 const selectedHistoryOrder = ref('');
 const historyReports = computed(() => store.globalReports);
+const apiBase3 = import.meta.env.VITE_API_BASE || '';
+
+// 从数据库加载哪些工单已加入维修记录 + 已提交
+const loadMaintenanceStatus = async () => {
+  try {
+    const res = await fetch(`${apiBase3}/maintenance/records?user_id=${encodeURIComponent(store.username)}&page_size=500`);
+    if (res.ok) {
+      const data = await res.json();
+      const addedIds = new Set((data.records || []).filter((r: any) => r.report_order_id).map((r: any) => r.report_order_id));
+      const submittedIds = new Set((data.records || []).filter((r: any) => r.report_submitted).map((r: any) => r.report_order_id));
+      for (const item of store.globalReports) {
+        if (addedIds.has(item.orderId)) item.maintenanceAdded = true;
+        if (submittedIds.has(item.orderId)) item.reportSubmitted = true;
+      }
+      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+    }
+  } catch { /* */ }
+};
+
+const saveToMaintenance = async (item: any) => {
+  const msgs = item.messages || [];
+  // 合并所有 assistant 消息，查找完整诊断格式
+  const fullText = msgs.filter((m: any) => m.role === 'assistant').map((m: any) => m.content || '').join('\n');
+  const firstMsg = msgs[0]?.content || '';
+
+  // 按 SOP 章节分割（兼容 ## 前缀）
+  const sec1 = fullText.match(/#*\s*一、故障诊断[\s\S]*?(?=#*\s*二、原因分析|$)/)?.[0] || '';
+  const sec2 = fullText.match(/#*\s*二、原因分析[\s\S]*?(?=#*\s*三、解决方案|$)/)?.[0] || '';
+  const sec3 = fullText.match(/#*\s*三、解决方案[\s\S]*?(?=##\s|【标准作业指引】|#*\s*四、|$)/)?.[0] || '';
+
+  // 设备型号：匹配各种格式（设备型号 / **设备型号** 等）
+  const dm = sec1.match(/\*{0,2}设备型号\*{0,2}[：:]\s*(.+)/) || fullText.match(/\*{0,2}设备型号\*{0,2}[：:]\s*(.+)/);
+  const device = dm ? dm[1].trim().replace(/[#*]/g, '').slice(0, 50) : (firstMsg.slice(0, 30) || '未指定');
+
+  // 故障类型：匹配 报警/故障码/报警名称 等
+  const alarm = sec1.match(/\*{0,2}(?:报警|报警名称|报警码|故障码)\*{0,2}[：:]\s*(.+)/);
+  const fault = alarm ? alarm[1].trim().replace(/[#*]/g, '').slice(0, 50) : (firstMsg.slice(0, 30) || '未知故障');
+
+  // 故障描述：匹配 现象/故障现象
+  const phen = sec1.match(/\*{0,2}(?:现象|故障现象)\*{0,2}[：:]\s*([\s\S]+?)(?=\n\*{0,2}(?:报警|设备|原因|方案|步骤|判断|\n)|\n\n|\n##|$)/);
+  const desc = phen ? phen[1].trim().replace(/[#*]/g, '').slice(0, 500) : firstMsg.slice(0, 200);
+
+  // 故障原因：二、原因分析 的正文
+  const cause = sec2.replace(/##?\s*二、原因分析\s*/g, '').trim().replace(/[#*]/g, '').slice(0, 500);
+
+  // 维修方案：三、解决方案 的正文
+  const solution = sec3.replace(/##?\s*三、解决方案\s*/g, '').trim().replace(/[#*]/g, '').slice(0, 500);
+
+  // 时间计算 — 将派单/提报时间转为 ISO 格式
+  const toISO = (t: string) => {
+    if (!t) return '';
+    try {
+      const d = new Date(t);
+      if (isNaN(d.getTime())) return '';
+      // 格式化为 YYYY-MM-DDTHH:mm:ss
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch { return ''; }
+  };
+  const startTime = toISO(item.dispatchTime);
+  const endTime = toISO(item.submitTime);
+  let duration = '';
+  if (startTime && endTime) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs > 0) {
+      const mins = Math.round(diffMs / 60000);
+      const hours = mins / 60;
+      if (hours >= 24) {
+        duration = `${(hours / 24).toFixed(1)}天`;
+      } else if (hours >= 1) {
+        duration = `${hours.toFixed(1)}小时`;
+      } else if (mins >= 1) {
+        duration = `${mins}分钟`;
+      } else {
+        duration = '不足1分钟';
+      }
+    }
+  }
+
+  try {
+    const res = await fetch(`${apiBase3}/maintenance/records?user_id=${encodeURIComponent(store.username)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_model: device || '未指定',
+        fault_type: fault,
+        repair_date: '',
+        technician: store.username || '',
+        description: desc || '',
+        solution: solution || '',
+        parts_replaced: '',
+        status: '已完成',
+        repair_start_time: startTime,
+        repair_end_time: endTime,
+        repair_duration: duration,
+        fault_cause: cause || '',
+        fault_resolved: '是',
+        report_order_id: item.orderId || '',
+      }),
+    });
+    if (res.ok) {
+      item.maintenanceAdded = true;
+      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+      ElMessage.success('已加入维修记录总结');
+    }
+    else { const d = await res.json(); ElMessage.error(d.detail || '保存失败'); }
+  } catch (e: any) { ElMessage.error('保存失败: ' + (e?.message || '')); }
+};
 
 const roleNameMap: Record<string, string> = {
   admin: '管理中枢',

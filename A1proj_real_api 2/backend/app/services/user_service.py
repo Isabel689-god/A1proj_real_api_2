@@ -70,9 +70,12 @@ class UserService:
         try:
             u = s.execute(select(User).where(User.username == username)).scalar_one_or_none()
             if u and u.password == password:
-                s.execute(update(User).where(User.username == username).values(
-                    is_online=1, last_login=self._utc_now()))
-                s.commit()
+                try:
+                    s.execute(update(User).where(User.username == username).values(
+                        is_online=1, last_login=self._utc_now()))
+                    s.commit()
+                except Exception:
+                    s.rollback()
                 permissions = self._get_group_permissions(u.group_name, u.extra_permissions or "[]")
                 return {"username": u.username, "group": u.group_name, "permissions": permissions}
             return None

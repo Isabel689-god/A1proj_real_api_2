@@ -319,6 +319,7 @@ export const useChatStore = defineStore('chat', {
     },
 
     submitReport(report: any) {
+      report.submitStatus = '已提交';
       this.globalReports.unshift(report);
       localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(this.globalReports));
     },

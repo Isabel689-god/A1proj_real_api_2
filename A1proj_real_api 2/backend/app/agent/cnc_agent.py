@@ -91,7 +91,12 @@ def sop_manage(action: str, step_index: int = 0, status: str = "", note: str = "
             return json.dumps({"error": "update 需要 step_index 和 status"}, ensure_ascii=False)
         result = sop_service.update_step_status(session_id, step_index, status, note)
         if result is None:
-            return json.dumps({"error": f"未找到会话 {session_id} 的 SOP"}, ensure_ascii=False)
+            # 检查具体失败原因
+            state = sop_service.get_sop_state(session_id)
+            if not state.get("exists"):
+                return json.dumps({"error": "当前会话尚无SOP，请先完成首轮诊断生成SOP"}, ensure_ascii=False)
+            else:
+                return json.dumps({"error": f"步骤索引 {step_index} 超出范围 (共{len(state.get('steps',[]))}步), 请检查步骤编号"}, ensure_ascii=False)
         state = sop_service.get_sop_state(session_id)
         return json.dumps(state, ensure_ascii=False, indent=2)
 

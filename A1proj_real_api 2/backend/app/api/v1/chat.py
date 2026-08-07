@@ -322,13 +322,26 @@ def _auto_apply_sop_updates(session_id: str, text: str) -> None:
             for i in range(max(1, start), min(end, total) + 1):
                 batch.append((i, "done", "自动"))
 
-        # "步骤X标记为完成/done" / "第X步完成"
-        for m in _r.finditer(r'(?:步骤|第)\s*(\d+)\s*步?\s*(?:标记为?|设置为?|已|为)?\s*(?:完成|done)', text):
+        # "步骤1、2、3已完成" / "步骤1，2，3标记完成" → 拆分为多个独立 done
+        for m in _r.finditer(r'(?:步骤)\s*(\d+(?:\s*[、,，]\s*\d+)+)\s*(?:标记为?|设置为?|已|为)?\s*(?:完成|done)', text):
+            nums = _r.findall(r'\d+', m.group(1))
+            for num in nums:
+                idx = int(num)
+                if 1 <= idx <= total:
+                    batch.append((idx, "done", "自动"))
+
+        # "步骤X标记为完成" / "✅ 步骤1：... — 已完成"
+        for m in _r.finditer(r'(?:步骤|第)\s*(\d+).*?[-–—]\s*(?:已)?\s*(?:完成|done)', text):
             idx = int(m.group(1))
             if 1 <= idx <= total:
                 batch.append((idx, "done", "自动"))
 
-        # "步骤X进行中"
+        # "步骤X进行中" / "步骤4：... — 进行中" / "步骤4进行中"
+        for m in _r.finditer(r'(?:步骤|第)\s*(\d+).*?[-–—]\s*(?:进行中|in.progress)', text, _r.IGNORECASE):
+            idx = int(m.group(1))
+            if 1 <= idx <= total:
+                batch.append((idx, "in_progress", "自动"))
+        # 兜底：无分隔符的 "步骤X进行中"
         for m in _r.finditer(r'(?:步骤|第)\s*(\d+)\s*步?\s*(?:标记为?|设置为?|为)?\s*(?:进行中|in.progress)', text, _r.IGNORECASE):
             idx = int(m.group(1))
             if 1 <= idx <= total:
@@ -439,22 +452,13 @@ async def chat_agent(req: ChatStreamRequest):
                 else:
                     yield f"data: {json.dumps({'type': 'error', 'error': '模型服务暂时不稳定，请重试'}, ensure_ascii=False)}\n\n"
 
-            # 从回答文本中解析建议和SOP
+            # 从回答文本中解析建议
             import re as _re2
             suggestions = _parse_suggestions(full_answer)
             if suggestions:
                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions[:3]}, ensure_ascii=False)}\n\n"
 
-            # 自动从 Agent 回复中解析 SOP 状态更新意图并执行
-            _auto_apply_sop_updates(req.session_id, full_answer)
-            # 推送最新状态给前端
-            try:
-                auto_state = sop_service.get_sop_state(req.session_id)
-                if auto_state.get("exists"):
-                    yield f"data: {json.dumps({'type': 'sop_state', 'state': auto_state}, ensure_ascii=False)}\n\n"
-            except Exception:
-                pass
-
+            # 先创建/更新 SOP（save_version），再自动解析状态更新
             sop_steps = _parse_sop_steps(full_answer)
             if sop_steps:
                 try:
@@ -474,9 +478,31 @@ async def chat_agent(req: ChatStreamRequest):
                             if i < len(state.get("steps", [])):
                                 s["step_status"] = state["steps"][i].get("status", "pending")
                                 s["step_note"] = state["steps"][i].get("note", "")
-                    yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
                 except Exception as e:
                     logger.warning(f"save_version 失败: {e}")
+                    sop_record = None
+            else:
+                sop_record = None
+
+            # 自动从 Agent 回复中解析 SOP 状态更新意图并执行（SOP 已存在时生效）
+            _auto_apply_sop_updates(req.session_id, full_answer)
+
+            # 推送最新状态 + sop_version
+            try:
+                auto_state = sop_service.get_sop_state(req.session_id)
+                if auto_state.get("exists"):
+                    yield f"data: {json.dumps({'type': 'sop_state', 'state': auto_state}, ensure_ascii=False)}\n\n"
+                    if sop_record:
+                        # 重新注入更新后的状态
+                        sop_record["current_step"] = auto_state.get("current_step", 1)
+                        sop_record["all_done"] = auto_state.get("all_done", False)
+                        for i, s in enumerate(sop_record.get("steps", [])):
+                            if i < len(auto_state.get("steps", [])):
+                                s["step_status"] = auto_state["steps"][i].get("status", "pending")
+                                s["step_note"] = auto_state["steps"][i].get("note", "")
+                        yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+            except Exception:
+                pass
 
             # 发送 token 用量
             if token_usage["total"] > 0:
@@ -546,3 +572,31 @@ def delete_session(session_id: str, user_id: str | None = None):
         raise HTTPException(status_code=404, detail="会话不存在")
     _sessions.pop(session_id, None)
     return {"success": True}
+
+
+# 提报状态持久化
+import fcntl as _fcntl
+from pathlib import Path as _Path
+
+_REPORT_STATE_FILE = _Path(__file__).resolve().parent.parent.parent / "data" / "report_submitted.json"
+
+def _load_report_state() -> set:
+    try:
+        return set(json.loads(_REPORT_STATE_FILE.read_text("utf-8")))
+    except: return set()
+
+def _save_report_state(state: set):
+    _REPORT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _REPORT_STATE_FILE.write_text(json.dumps(list(state)), "utf-8")
+
+
+@router.get("/report/submitted/{order_id}")
+def check_report_submitted(order_id: str):
+    return {"submitted": order_id in _load_report_state()}
+
+@router.post("/report/submitted/{order_id}")
+def mark_report_submitted(order_id: str):
+    state = _load_report_state()
+    state.add(order_id)
+    _save_report_state(state)
+    return {"submitted": True}

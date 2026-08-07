@@ -15,14 +15,24 @@
       </div>
       <div class="info-row">
         <span class="label">标准合规校验:</span>
-        <div class="status-badge">
+        <div class="status-badge" :class="{ 'is-done': submitted || isEnabled }">
           <span class="pulse-dot"></span>
-          {{ isEnabled ? '符合提交流程' : '待完成全部步骤' }}
+          {{ submitted || isEnabled ? '符合提交流程' : '待完成全部步骤' }}
         </div>
       </div>
     </div>
     <div class="card-footer">
       <el-button
+        v-if="submitted"
+        type="success"
+        size="default"
+        class="cyber-submit-btn"
+        disabled
+      >
+        已提交
+      </el-button>
+      <el-button
+        v-else
         :type="isEnabled ? 'primary' : 'info'"
         size="default"
         class="cyber-submit-btn"
@@ -38,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const props = defineProps<{
@@ -52,6 +62,24 @@ const emit = defineEmits<{
 }>();
 
 const submitting = ref(false);
+const submitted = ref(false);
+
+const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+// 从后端加载提交状态
+watch(() => props.orderId, async (id) => {
+  if (!id) { submitted.value = false; return; }
+  // 从 MySQL 加载提交状态
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records?page_size=1&user_id=&check_order=${encodeURIComponent(id)}`);
+    const checkId = async (oid: string) => {
+      // 查询该 orderId 是否有已提交的记录
+      const r = await fetch(`${API_BASE}/maintenance/records/check-submitted/${encodeURIComponent(oid)}`);
+      if (r.ok) { const d = await r.json(); submitted.value = d.submitted; }
+    };
+    await checkId(id);
+  } catch { /* */ }
+}, { immediate: true });
 
 const handleArchiveOrder = () => {
   ElMessageBox.confirm(
@@ -63,13 +91,23 @@ const handleArchiveOrder = () => {
       type: 'warning',
     }
   ).then(() => {
+    submitted.value = true;
+    // 保存到 MySQL：创建/更新一条维修记录，标记已提交
+    fetch(`${API_BASE}/maintenance/records/submit-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        report_order_id: props.orderId || '',
+        report_submitted: true,
+      }),
+    }).catch(() => {});
     submitting.value = true;
     setTimeout(() => {
       submitting.value = false;
       ElMessage({
         type: 'success',
-        message: '工单已成功提报！故障经验已同步至系统知识库。',
-        duration: 3000
+        message: '已提报',
+        duration: 1500
       });
       emit('report-submitted');
     }, 1200);

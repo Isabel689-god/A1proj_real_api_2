@@ -160,7 +160,13 @@ def parse_pdf(path: Path) -> list[dict]:
     except ImportError as exc:
         raise ImportError("请安装 pypdf：pip install pypdf") from exc
 
-    reader = PdfReader(str(path))
+    try:
+        reader = PdfReader(str(path))
+    except Exception as e:
+        # 文件损坏或为空时返回空列表
+        import logging
+        logging.getLogger(__name__).warning(f"PDF 解析失败: {path.name} — {e}")
+        return []
     total_pages = len(reader.pages)
     pages: list[str] = []
     for page in reader.pages:

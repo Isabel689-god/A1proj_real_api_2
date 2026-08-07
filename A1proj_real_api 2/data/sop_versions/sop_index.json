@@ -153,14 +153,6 @@
       "updated_at": "2026-08-04T09:09:11.406145+00:00"
     },
     {
-      "sop_id": "sop_83ac20f00419",
-      "session_id": "session_1785834070121",
-      "issue_fingerprint": "176|编码器|报警 断线",
-      "fault_code": "176",
-      "device_model": "",
-      "updated_at": "2026-08-04T09:20:07.331192+00:00"
-    },
-    {
       "sop_id": "sop_470e2931000f",
       "session_id": "live2_1785835328",
       "issue_fingerprint": "数控机床|伺服|复位 报警 过载 断线",
@@ -241,14 +233,6 @@
       "updated_at": "2026-08-04T10:51:03.549118+00:00"
     },
     {
-      "sop_id": "sop_aee1da3f23e6",
-      "session_id": "freeze2_1785841370",
-      "issue_fingerprint": "主轴|异响",
-      "fault_code": "",
-      "device_model": "",
-      "updated_at": "2026-08-04T11:02:50.576029+00:00"
-    },
-    {
       "sop_id": "sop_5d8e7f1d876c",
       "session_id": "e2e_1785841738",
       "issue_fingerprint": "主轴|报警 异响",
@@ -281,28 +265,12 @@
       "updated_at": "2026-08-04T11:22:52.606933+00:00"
     },
     {
-      "sop_id": "sop_081bbc51bd7f",
-      "session_id": "session_1785842797376",
-      "issue_fingerprint": "西门子|176|编码器|报警 断线",
-      "fault_code": "176",
-      "device_model": "",
-      "updated_at": "2026-08-04T11:27:08.238734+00:00"
-    },
-    {
       "sop_id": "sop_a3f25aa6db83",
       "session_id": "session_1785842797376",
       "issue_fingerprint": "156|编码器|报警",
       "fault_code": "156",
       "device_model": "",
       "updated_at": "2026-08-04T11:27:37.134292+00:00"
-    },
-    {
-      "sop_id": "sop_9f45b31f857b",
-      "session_id": "session_1785842797376",
-      "issue_fingerprint": "报警",
-      "fault_code": "",
-      "device_model": "",
-      "updated_at": "2026-08-04T11:28:25.500769+00:00"
     },
     {
       "sop_id": "sop_f073da0ad963",
@@ -345,22 +313,6 @@
       "updated_at": "2026-08-04T12:03:22.488269+00:00"
     },
     {
-      "sop_id": "sop_cd05a1839eb1",
-      "session_id": "session_1785845645415",
-      "issue_fingerprint": "156|报警",
-      "fault_code": "156",
-      "device_model": "",
-      "updated_at": "2026-08-04T12:14:23.496888+00:00"
-    },
-    {
-      "sop_id": "sop_6f82a0a2a8c9",
-      "session_id": "session_1785846094441",
-      "issue_fingerprint": "176|编码器|报警",
-      "fault_code": "176",
-      "device_model": "",
-      "updated_at": "2026-08-04T12:21:53.892599+00:00"
-    },
-    {
       "sop_id": "sop_f359bdb138ee",
       "session_id": "session_1785846094441",
       "issue_fingerprint": "编码器|验证 报警",
@@ -393,12 +345,244 @@
       "updated_at": "2026-08-04T12:48:38.674684+00:00"
     },
     {
+      "sop_id": "sop_37db79f2acba",
+      "session_id": "session_1785850084967",
+      "issue_fingerprint": "176|编码器|更换 报警",
+      "fault_code": "176",
+      "device_model": "",
+      "updated_at": "2026-08-04T13:28:26.312296+00:00"
+    },
+    {
+      "sop_id": "sop_9f45b31f857b",
+      "session_id": "verify_match_1785854142",
+      "issue_fingerprint": "报警",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:35:43.000396+00:00"
+    },
+    {
+      "sop_id": "sop_961199173b49",
+      "session_id": "session_1785854536132",
+      "issue_fingerprint": "210|编码器|参数 报警",
+      "fault_code": "210",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:42:58.304896+00:00"
+    },
+    {
+      "sop_id": "sop_85120456ac89",
+      "session_id": "session_1785854536132",
+      "issue_fingerprint": "电源|参数",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:43:33.650254+00:00"
+    },
+    {
+      "sop_id": "sop_5e762af26b65",
+      "session_id": "session_1785854536132",
+      "issue_fingerprint": "电源|复位",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:45:38.086656+00:00"
+    },
+    {
+      "sop_id": "sop_155b8703b20e",
+      "session_id": "session_1785855123053",
+      "issue_fingerprint": "210|复位 参数 报警",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:53:07.334350+00:00"
+    },
+    {
+      "sop_id": "sop_6ade6f71ecdf",
+      "session_id": "session_1785855475366",
+      "issue_fingerprint": "0i|210|编码器|复位 参数 报警",
+      "fault_code": "210",
+      "device_model": "0i",
+      "updated_at": "2026-08-04T14:58:08.093964+00:00"
+    },
+    {
+      "sop_id": "sop_797ea8a7cdf1",
+      "session_id": "session_1785855475366",
+      "issue_fingerprint": "210|参数 报警",
+      "fault_code": "210",
+      "device_model": "",
+      "updated_at": "2026-08-04T14:58:38.808022+00:00"
+    },
+    {
+      "sop_id": "sop_7983991882e0",
+      "session_id": "verify_final_1785856072",
+      "issue_fingerprint": "编码器|更换 报警 异响",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:07:59.393665+00:00"
+    },
+    {
+      "sop_id": "sop_9a3c18698819",
+      "session_id": "1785856136",
+      "issue_fingerprint": "数控机床|编码器|过热 更换 验证 报警 异响 过载",
+      "fault_code": "",
+      "device_model": "数控机床",
+      "updated_at": "2026-08-04T15:09:04.856830+00:00"
+    },
+    {
+      "sop_id": "sop_524e17dfba38",
+      "session_id": "1785856171",
+      "issue_fingerprint": "编码器|更换 报警 异响 过载",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:09:39.142366+00:00"
+    },
+    {
+      "sop_id": "sop_aee1da3f23e6",
+      "session_id": "1785856171",
+      "issue_fingerprint": "主轴|异响",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:09:49.585909+00:00"
+    },
+    {
+      "sop_id": "sop_f851d9b63f3a",
+      "session_id": "1785856201",
+      "issue_fingerprint": "fanuc|编码器|参数 异响",
+      "fault_code": "",
+      "device_model": "FANUC",
+      "updated_at": "2026-08-04T15:10:25.231153+00:00"
+    },
+    {
+      "sop_id": "sop_4bee70868686",
+      "session_id": "1785856250",
+      "issue_fingerprint": "数控机床|编码器|报警 异响",
+      "fault_code": "",
+      "device_model": "数控机床",
+      "updated_at": "2026-08-04T15:11:08.498479+00:00"
+    },
+    {
+      "sop_id": "sop_f4814a4ce630",
+      "session_id": "session_1785856445343",
+      "issue_fingerprint": "210|伺服|参数 报警",
+      "fault_code": "210",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:14:25.128341+00:00"
+    },
+    {
+      "sop_id": "sop_2f4ed1801d51",
+      "session_id": "session_1785856445343",
+      "issue_fingerprint": "伺服|参数",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:15:33.263111+00:00"
+    },
+    {
+      "sop_id": "sop_13fa0dd487db",
+      "session_id": "1785857479",
+      "issue_fingerprint": "fanuc|编码器|更换 报警 异响",
+      "fault_code": "",
+      "device_model": "FANUC",
+      "updated_at": "2026-08-04T15:31:30.626215+00:00"
+    },
+    {
+      "sop_id": "sop_7316db884681",
+      "session_id": "1785857504",
+      "issue_fingerprint": "fanuc|主轴|更换 报警 异响",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:32:08.592643+00:00"
+    },
+    {
+      "sop_id": "sop_2e81a47a39b4",
+      "session_id": "session_1785857695244",
+      "issue_fingerprint": "数控机床|210|更换 参数 报警",
+      "fault_code": "210",
+      "device_model": "数控机床",
+      "updated_at": "2026-08-04T15:35:08.636135+00:00"
+    },
+    {
+      "sop_id": "sop_749d76524267",
+      "session_id": "session_1785857695244",
+      "issue_fingerprint": "参数",
+      "fault_code": "",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:35:40.479070+00:00"
+    },
+    {
+      "sop_id": "sop_c851a2d2e24b",
+      "session_id": "session_1785857958358",
+      "issue_fingerprint": "676|编码器|参数 报警",
+      "fault_code": "676",
+      "device_model": "",
+      "updated_at": "2026-08-04T15:40:55.455136+00:00"
+    },
+    {
+      "sop_id": "sop_58e3ff16f603",
+      "session_id": "session_1785858074238",
+      "issue_fingerprint": "671|编码器|报警 断线",
+      "fault_code": "671",
+      "device_model": "0i",
+      "updated_at": "2026-08-05T02:26:41.227171+00:00"
+    },
+    {
+      "sop_id": "sop_db2398938e72",
+      "session_id": "session_1785897195556",
+      "issue_fingerprint": "西门子|176|编码器|报警",
+      "fault_code": "176",
+      "device_model": "",
+      "updated_at": "2026-08-05T04:14:17.132764+00:00"
+    },
+    {
+      "sop_id": "sop_6f82a0a2a8c9",
+      "session_id": "session_1785978911101",
+      "issue_fingerprint": "176|编码器|报警",
+      "fault_code": "176",
+      "device_model": "0i",
+      "updated_at": "2026-08-06T01:20:24.596393+00:00"
+    },
+    {
+      "sop_id": "sop_83ac20f00419",
+      "session_id": "session_1785976637911",
+      "issue_fingerprint": "176|编码器|报警 断线",
+      "fault_code": "176",
+      "device_model": "0i",
+      "updated_at": "2026-08-06T01:29:14.388040+00:00"
+    },
+    {
+      "sop_id": "sop_9a8ffcb17396",
+      "session_id": "session_1786004215508",
+      "issue_fingerprint": "西门子|176|编码器|复位 报警 断线",
+      "fault_code": "176",
+      "device_model": "西门子",
+      "updated_at": "2026-08-06T08:17:18.668867+00:00"
+    },
+    {
+      "sop_id": "sop_cf314b19c68b",
+      "session_id": "session_1785857344600",
+      "issue_fingerprint": "编码器|更换 报警",
+      "fault_code": "176",
+      "device_model": "",
+      "updated_at": "2026-08-06T09:36:33.973267+00:00"
+    },
+    {
+      "sop_id": "sop_081bbc51bd7f",
+      "session_id": "session_1786074453520",
+      "issue_fingerprint": "西门子|176|编码器|报警 断线",
+      "fault_code": "176",
+      "device_model": "西门子",
+      "updated_at": "2026-08-07T03:47:50.526738+00:00"
+    },
+    {
       "sop_id": "sop_816c022c4800",
-      "session_id": "session_1785847700605",
+      "session_id": "session_1786074453520",
       "issue_fingerprint": "编码器",
       "fault_code": "",
       "device_model": "",
-      "updated_at": "2026-08-04T12:50:24.313513+00:00"
+      "updated_at": "2026-08-07T03:48:46.020487+00:00"
+    },
+    {
+      "sop_id": "sop_cd05a1839eb1",
+      "session_id": "session_1786074932776",
+      "issue_fingerprint": "156|报警",
+      "fault_code": "156",
+      "device_model": "",
+      "updated_at": "2026-08-07T03:56:39.281655+00:00"
     }
   ]
 }

@@ -22,6 +22,11 @@ class RecordCreate(BaseModel):
     solution: str = ""
     parts_replaced: str = ""
     status: str = "已完成"
+    repair_start_time: Optional[str] = None
+    repair_end_time: Optional[str] = None
+    repair_duration: str = ""
+    fault_cause: str = ""
+    fault_resolved: str = "是"
 
 
 class RecordUpdate(BaseModel):
@@ -33,6 +38,21 @@ class RecordUpdate(BaseModel):
     solution: Optional[str] = None
     parts_replaced: Optional[str] = None
     status: Optional[str] = None
+    repair_start_time: Optional[str] = None
+    repair_end_time: Optional[str] = None
+    repair_duration: Optional[str] = None
+    fault_cause: Optional[str] = None
+    fault_resolved: Optional[str] = None
+
+
+def _safe_datetime(val: str | None):
+    """安全解析日期时间，无效时返回 None"""
+    if not val or not str(val).strip():
+        return None
+    try:
+        return datetime.fromisoformat(str(val))
+    except (ValueError, TypeError):
+        return None
 
 
 def _row_to_dict(r: MaintenanceRecord) -> dict:
@@ -47,6 +67,14 @@ def _row_to_dict(r: MaintenanceRecord) -> dict:
         "solution": r.solution,
         "parts_replaced": r.parts_replaced,
         "status": r.status,
+        "repair_start_time": r.repair_start_time.isoformat() if r.repair_start_time else "",
+        "repair_end_time": r.repair_end_time.isoformat() if r.repair_end_time else "",
+        "repair_duration": r.repair_duration or "",
+        "fault_cause": r.fault_cause or "",
+        "fault_resolved": r.fault_resolved or "是",
+        "synced": getattr(r, "synced", "未同步") or "未同步",
+        "report_order_id": getattr(r, "report_order_id", "") or "",
+        "report_submitted": bool(getattr(r, "report_submitted", 0)),
         "created_at": r.created_at.isoformat() if r.created_at else "",
         "updated_at": r.updated_at.isoformat() if r.updated_at else "",
     }
@@ -54,16 +82,17 @@ def _row_to_dict(r: MaintenanceRecord) -> dict:
 
 @router.get("/records")
 def list_records(
-    user_id: str = Query(...),
+    user_id: str = Query(""),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
 ):
-    """分页查询当前用户的维修记录"""
+    """分页查询维修记录，user_id 为空时返回全部"""
     db = get_session()
     try:
-        q = db.query(MaintenanceRecord).filter(
-            MaintenanceRecord.user_id == user_id
-        ).order_by(MaintenanceRecord.updated_at.desc())
+        q = db.query(MaintenanceRecord)
+        if user_id:
+            q = q.filter(MaintenanceRecord.user_id == user_id)
+        q = q.order_by(MaintenanceRecord.updated_at.desc())
         total = q.count()
         rows = q.offset((page - 1) * page_size).limit(page_size).all()
         return {
@@ -72,6 +101,26 @@ def list_records(
             "page_size": page_size,
             "records": [_row_to_dict(r) for r in rows],
         }
+    finally:
+        db.close()
+
+
+@router.post("/records/{record_id}/sync")
+def sync_to_graph(record_id: str, action: str = "sync"):
+    """标记维修记录同步/取消同步到知识图谱"""
+    db = get_session()
+    try:
+        record = db.query(MaintenanceRecord).filter(
+            MaintenanceRecord.record_id == record_id
+        ).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="记录不存在")
+        if action == "unsync":
+            record.synced = "未同步"
+        else:
+            record.synced = "已同步"
+        db.commit()
+        return {"success": True, "synced": record.synced}
     finally:
         db.close()
 
@@ -92,6 +141,11 @@ def create_record(req: RecordCreate, user_id: str = Query(...)):
             solution=req.solution,
             parts_replaced=req.parts_replaced,
             status=req.status,
+            repair_start_time=_safe_datetime(req.repair_start_time),
+            repair_end_time=_safe_datetime(req.repair_end_time),
+            repair_duration=req.repair_duration,
+            fault_cause=req.fault_cause,
+            fault_resolved=req.fault_resolved,
         )
         db.add(record)
         db.commit()
@@ -102,14 +156,14 @@ def create_record(req: RecordCreate, user_id: str = Query(...)):
 
 
 @router.put("/records/{record_id}")
-def update_record(record_id: str, req: RecordUpdate, user_id: str = Query(...)):
-    """修改维修记录（仅允许修改自己的记录）"""
+def update_record(record_id: str, req: RecordUpdate, user_id: str = Query("")):
+    """修改维修记录（不传 user_id 时管理员可修改任意记录）"""
     db = get_session()
     try:
-        record = db.query(MaintenanceRecord).filter(
-            MaintenanceRecord.record_id == record_id,
-            MaintenanceRecord.user_id == user_id,
-        ).first()
+        q = db.query(MaintenanceRecord).filter(MaintenanceRecord.record_id == record_id)
+        if user_id:
+            q = q.filter(MaintenanceRecord.user_id == user_id)
+        record = q.first()
         if not record:
             raise HTTPException(status_code=404, detail="记录不存在")
         for field, value in req.dict(exclude_unset=True).items():
@@ -122,14 +176,14 @@ def update_record(record_id: str, req: RecordUpdate, user_id: str = Query(...)):
 
 
 @router.delete("/records/{record_id}")
-def delete_record(record_id: str, user_id: str = Query(...)):
-    """删除维修记录"""
+def delete_record(record_id: str, user_id: str = Query("")):
+    """删除维修记录（不传 user_id 时管理员可删除任意记录）"""
     db = get_session()
     try:
-        record = db.query(MaintenanceRecord).filter(
-            MaintenanceRecord.record_id == record_id,
-            MaintenanceRecord.user_id == user_id,
-        ).first()
+        q = db.query(MaintenanceRecord).filter(MaintenanceRecord.record_id == record_id)
+        if user_id:
+            q = q.filter(MaintenanceRecord.user_id == user_id)
+        record = q.first()
         if not record:
             raise HTTPException(status_code=404, detail="记录不存在")
         db.delete(record)
@@ -140,26 +194,35 @@ def delete_record(record_id: str, user_id: str = Query(...)):
 
 
 @router.get("/records/export")
-def export_records(user_id: str = Query(...)):
-    """导出当前用户全部维修记录为 CSV"""
+def export_records(user_id: str = Query("")):
+    """导出维修记录为 CSV，user_id 为空时导出全部"""
     db = get_session()
     try:
-        rows = db.query(MaintenanceRecord).filter(
-            MaintenanceRecord.user_id == user_id
-        ).order_by(MaintenanceRecord.created_at.desc()).all()
+        q = db.query(MaintenanceRecord)
+        if user_id:
+            q = q.filter(MaintenanceRecord.user_id == user_id)
+        rows = q.order_by(MaintenanceRecord.created_at.desc()).all()
 
         output = io.StringIO()
         output.write('\ufeff')  # UTF-8 BOM for Excel
         writer = csv.writer(output)
         writer.writerow([
             "记录编号", "设备型号", "故障类型", "维修日期", "维修人员",
-            "故障描述", "维修方案", "更换配件", "状态", "创建时间", "更新时间"
+            "故障描述", "维修方案", "更换配件", "状态",
+            "维修开始时间", "维修结束时间", "维修用时",
+            "故障原因分析", "是否解决故障",
+            "创建时间", "更新时间"
         ])
         for r in rows:
             writer.writerow([
                 r.record_id, r.device_model, r.fault_type, r.repair_date,
                 r.technician, r.description, r.solution, r.parts_replaced,
                 r.status,
+                r.repair_start_time.isoformat() if r.repair_start_time else "",
+                r.repair_end_time.isoformat() if r.repair_end_time else "",
+                r.repair_duration or "",
+                r.fault_cause or "",
+                r.fault_resolved or "",
                 r.created_at.isoformat() if r.created_at else "",
                 r.updated_at.isoformat() if r.updated_at else "",
             ])
@@ -171,5 +234,48 @@ def export_records(user_id: str = Query(...)):
                 "Content-Disposition": f"attachment; filename=maintenance_records_{datetime.now().strftime('%Y%m%d')}.csv"
             },
         )
+    finally:
+        db.close()
+
+
+@router.post("/records/submit-report")
+def submit_report(req: dict):
+    """保存提报状态"""
+    db = get_session()
+    try:
+        order_id = req.get("report_order_id", "")
+        if not order_id:
+            raise HTTPException(status_code=400, detail="缺少 report_order_id")
+        # 查找已有记录或创建新记录
+        record = db.query(MaintenanceRecord).filter(
+            MaintenanceRecord.report_order_id == order_id
+        ).first()
+        if record:
+            record.report_submitted = 1
+            db.commit()
+        else:
+            record = MaintenanceRecord(
+                record_id=f"mr:{uuid.uuid4().hex[:8]}",
+                user_id="system",
+                report_order_id=order_id,
+                report_submitted=1,
+            )
+            db.add(record)
+            db.commit()
+        return {"success": True, "record_id": record.record_id}
+    finally:
+        db.close()
+
+
+@router.get("/records/check-submitted/{order_id}")
+def check_submitted(order_id: str):
+    """查询工单是否已提交"""
+    db = get_session()
+    try:
+        record = db.query(MaintenanceRecord).filter(
+            MaintenanceRecord.report_order_id == order_id,
+            MaintenanceRecord.report_submitted == 1,
+        ).first()
+        return {"submitted": record is not None}
     finally:
         db.close()
