@@ -18,15 +18,12 @@
               <el-button size="small" type="primary" link @click="showDemo(step)" style="margin-top:4px;">🎬 演示动画</el-button>
               <div class="step-status-line">
                 <el-tag v-if="step._status === 'done'" type="success" size="small" effect="dark">✅ 已完成</el-tag>
-                <el-tag v-else-if="step._status === 'in_progress'" type="warning" size="small" effect="dark">🔄 Agent判定:进行中</el-tag>
+                <el-tag v-else-if="step._status === 'in_progress'" type="warning" size="small" effect="dark">🔄 进行中</el-tag>
                 <el-tag v-else type="info" size="small" effect="plain">⬜ 待执行</el-tag>
                 <span v-if="step._note" class="step-note">— {{ step._note }}</span>
               </div>
             </div>
           </template>
-        </el-step>
-        <el-step title="检修完成" v-if="allDone" status="success">
-          <template #description><p class="text-green">Agent 判定：全部步骤已完成。</p></template>
         </el-step>
       </el-steps>
       <div v-if="sopNotes.length" class="sop-notes">
@@ -38,7 +35,6 @@
       </div>
     </div>
     <div v-else class="empty-state">
-      <div class="radar-scan"></div>
       <p>等待 Agent 生成标准化排障步骤...</p>
     </div>
     <!-- 动画演示弹窗 -->
@@ -50,25 +46,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 
 const store = useChatStore()
 const emit = defineEmits<{ (e: 'all-done', v: boolean): void }>()
 
-const lastAssistantMsg = computed(() => {
-  // 触发 sopTick 强制重新计算
+// 始终从首轮锁定的 SOP 读取：结构不变，状态实时流转
+const currentSop = computed(() => {
   void store.sopTick
-  const msgs = store.messages
-  return [...msgs].reverse().find((m: any) => m.role === 'assistant')
+  return store.lockedSOP
 })
-
-const currentSop = computed(() => lastAssistantMsg.value?.current_sop)
 
 const dynamicSteps = computed(() => {
   const sop = currentSop.value
-  const steps = sop?.steps?.length ? sop.steps : lastAssistantMsg.value?.sop_steps
-  console.log('SopFlow computed:', steps?.length, steps?.map((s:any) => s.step_status || s.status || '?'))
+  const steps = sop?.steps
   if (!steps?.length) return []
   return steps.map((s: any) => {
     const status = s.step_status || s.status || 'pending'
@@ -90,30 +82,14 @@ const sopNotes = computed(() => {
 })
 
 const sopMeta = computed(() => {
-  const sop = currentSop.value
-  if (!sop) return 'Agent 实时生成 · 状态由 Agent 自动同步'
-  const classification = sop.classification
-  const isMerge = classification?.decision === 'same'
-  const decisionLabel = isMerge ? '🔄 追问补充' : '✨ 新故障诊断'
-  const sopId = sop.sop_id ? ` · ${sop.sop_id.slice(0, 8)}` : ''
-  const t = sop.updated_at || sop.created_at
-  const timeStr = t ? new Date(t).toLocaleString('zh-CN') : '刚刚更新'
-  return `${decisionLabel} · v${sop.version}${sopId} · ${timeStr}`
+  if (!currentSop.value) return '等待首轮诊断生成 SOP'
+  return '步骤结构已锁定 · 状态随对话实时更新'
 })
 
 const allDone = computed(() => currentSop.value?.all_done || false)
 const currentStepIndex = computed(() => (currentSop.value?.current_step || 1) - 1)
 
-// 监听 allDone 变化，emit 给父组件
-import { watch } from 'vue'
 watch(allDone, (v) => emit('all-done', v))
-
-const formatTime = (value?: string) => {
-  if (!value) return '刚刚更新'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleString('zh-CN')
-}
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const demoVisible = ref(false)
@@ -161,7 +137,4 @@ const showDemo = async (step: any) => {
 .note-label{color:var(--warning);font-weight:600}
 .note-content{line-height:1.6;color:var(--text-secondary)}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60%;color:var(--text-muted);text-align:center;font-size:13px}
-.radar-scan{width:60px;height:60px;border-radius:50%;border:1px solid var(--border-light);position:relative;margin-bottom:20px;overflow:hidden}
-.radar-scan::before{content:'';position:absolute;top:50%;left:50%;width:50%;height:50%;background:conic-gradient(from 0deg,transparent 70%,var(--primary-color) 100%);transform-origin:0 0;animation:scan 2s linear infinite}
-@keyframes scan{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
 </style>

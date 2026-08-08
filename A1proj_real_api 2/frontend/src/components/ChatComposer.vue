@@ -166,19 +166,18 @@ const handleSend = async () => {
 /* Gemini 核心胶囊框体设计 */
 .gemini-capsule-box {
   width: 100%; max-width: 820px;
-  background: var(--bg-card); /* 磨砂卡片底色 */
-  backdrop-filter: blur(12px);
+  background: var(--bg-card);
   border: 1px solid var(--border-glass);
   border-radius: 28px;
   padding: 14px 18px 10px;
   display: flex; flex-direction: column;
   transition: border-color 0.3s, box-shadow 0.3s;
-  box-shadow: var(--shadow-glass);
+  box-shadow: var(--shadow-card);
 }
 
 .gemini-capsule-box:focus-within {
-  border-color: var(--border-light);
-  box-shadow: var(--shadow-neon-sm);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
 }
 
 /* 内嵌多模态预览卡片 */
@@ -305,15 +304,13 @@ const handleSend = async () => {
 }
 
 .circle-send-btn.has-content {
-  background: var(--theme-gradient);
+  background: var(--primary-color);
   color: var(--text-inverse);
   cursor: pointer;
-  box-shadow: 0 2px 12px rgba(0, 200, 180, 0.4);
 }
 .circle-send-btn.has-content:hover {
-  background: var(--theme-gradient);
+  background: var(--primary-dark);
   transform: scale(1.05);
-  box-shadow: 0 4px 20px rgba(0, 200, 180, 0.5);
 }
 
 .circle-send-btn svg {

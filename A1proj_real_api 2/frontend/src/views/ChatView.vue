@@ -412,35 +412,17 @@ onMounted(() => {
 }
 .header-title::before {
   content: '';
-  width: 6px; height: 6px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--primary-color);
-  box-shadow: 0 0 8px var(--primary-color);
 }
 
-/* ✅ 新增：顶栏知识图谱高亮按钮样式 */
-.graph-btn {
-  color: var(--success) !important;
+/* 顶栏按钮 */
+.graph-btn, .neo4j-btn {
   font-size: 14px;
-  font-weight: 500;
-}
-.graph-btn:hover {
-  color: var(--primary-light) !important;
-  text-shadow: 0 0 8px var(--primary-color);
-}
-
-.neo4j-btn {
-  color: var(--primary-color) !important;
-  font-size: 14px;
-  font-weight: 500;
-}
-.neo4j-btn:hover {
-  color: var(--primary-light) !important;
-  text-shadow: 0 0 8px var(--primary-color);
 }
 
 .user-center-btn {
-  color: var(--accent-blue) !important;
   font-size: 14px;
 }
 

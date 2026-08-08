@@ -1,38 +1,13 @@
 <template>
   <div class="login-container">
-    <!-- 环境光晕 -->
-    <div class="ambient-orb orb-1"></div>
-    <div class="ambient-orb orb-2"></div>
-    <div class="ambient-orb orb-3"></div>
-
-    <ParticleBackground />
-
     <button class="login-theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">
       {{ theme === 'dark' ? '☀' : '☾' }}
     </button>
 
     <div class="login-card">
-      <!-- 卡片顶部发光边框 -->
-      <div class="card-glow-top"></div>
-
       <div class="login-header">
-        <div class="logo-wrapper">
-          <div class="logo-ring"></div>
-          <svg class="logo-icon" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-            <path d="M2 17l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-            <path d="M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>
-          <div class="logo-pulse"></div>
-        </div>
-
         <h1 class="title-main">匠芯智修</h1>
         <p class="title-sub">工业设备智能检修中枢</p>
-        <div class="title-divider">
-          <span class="divider-line"></span>
-          <span class="divider-dot"></span>
-          <span class="divider-line"></span>
-        </div>
       </div>
 
       <el-form
@@ -107,7 +82,6 @@ import { ref, reactive, inject } from 'vue';
 import type { Ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElForm } from 'element-plus';
-import ParticleBackground from '../components/ParticleBackground.vue';
 import { useChatStore } from '../stores/chat';
 
 const router = useRouter();
@@ -166,32 +140,14 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-/* ==================== 容器 & 环境光 ==================== */
+/* ==================== 容器 ==================== */
 .login-container {
-  --login-card-bg: rgba(8, 16, 32, 0.78);
-  --login-card-border: rgba(0, 200, 180, 0.28);
-  --login-input-bg: rgba(10, 18, 32, 0.72);
-  --login-shadow: 0 0 80px rgba(0, 180, 160, 0.08), 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --login-subtitle: #cbd5e1;
-  --login-muted: #94a3b8;
-  --login-footer: #94a3b8;
   width: 100vw; height: 100vh;
   display: flex;
   align-items: center; justify-content: center;
   position: relative;
   overflow: hidden;
-  background: radial-gradient(ellipse at 30% 20%, var(--bg-dark) 0%, var(--bg-darker) 60%, var(--bg-darker) 100%);
-}
-
-:global([data-theme="light"]) .login-container {
-  --login-card-bg: rgba(255, 255, 255, 0.9);
-  --login-card-border: rgba(0, 150, 136, 0.22);
-  --login-input-bg: rgba(255, 255, 255, 0.88);
-  --login-shadow: 0 18px 54px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --login-subtitle: #334155;
-  --login-muted: #475569;
-  --login-footer: #64748b;
-  background: radial-gradient(ellipse at 30% 20%, #f8fafc 0%, #e0f2fe 50%, #f1f5f9 100%);
+  background: var(--bg-darker);
 }
 
 :global([data-theme="light"] .login-container .particle-canvas) {

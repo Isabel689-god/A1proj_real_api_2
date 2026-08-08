@@ -138,9 +138,8 @@ watch(() => store.messages.length, () => {
 
 .ai-sparkle-avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: var(--theme-gradient);
+  background: var(--primary-color);
   color: var(--text-inverse); display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 12px rgba(0, 200, 180, 0.3);
 }
 
 .ai-sparkle-avatar svg {
