@@ -267,8 +267,6 @@
                 方案：{{ c.solution?.slice(0,80) || '无' }}
               </div>
               <div class="card-actions">
-                <el-button v-if="c.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(c)">同步</el-button>
-                <el-button v-else type="warning" link size="small" @click="unsyncGraph(c)">取消同步</el-button>
                 <el-button type="primary" link size="small" @click="viewMaintDetail(c)">查看</el-button>
               </div>
             </div>
@@ -669,20 +667,24 @@ const unsyncGraph = async (row: any) => {
 
 const maintSyncAll = ref(false);
 const syncAllMaint = async () => {
-  const targetList = activeMenu.value === 'case_library' ? cases : maintRecords;
-  const unsynced = targetList.value.filter((r: any) => r.synced !== '已同步');
-  if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); return; }
   maintSyncAll.value = true;
-  let ok = 0;
-  for (const row of unsynced) {
-    row.synced = '已同步';
-    try {
-      const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=sync`, { method: 'POST' });
-      if (res.ok) { ok++; } else { row.synced = '未同步'; }
-    } catch { row.synced = '未同步'; }
-  }
+  try {
+    // 先拉全部记录，找出未同步的
+    const res = await fetch(`${API_BASE}/maintenance/records?page_size=500`);
+    if (!res.ok) throw new Error('加载失败');
+    const data = await res.json();
+    const unsynced = (data.records || []).filter((r: any) => r.synced !== '已同步');
+    if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); maintSyncAll.value = false; return; }
+    let ok = 0;
+    for (const row of unsynced) {
+      try {
+        const sr = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=sync`, { method: 'POST' });
+        if (sr.ok) ok++;
+      } catch { /* */ }
+    }
+    ElMessage.success(`全量同步完成: ${ok}/${unsynced.length} 条`);
+  } catch (e: any) { ElMessage.error(e?.message || '同步失败'); }
   maintSyncAll.value = false;
-  ElMessage.success(`全量同步完成: ${ok}/${unsynced.length} 条`);
   loadCaseLibrary();
   loadMaintRecords();
 };
@@ -1008,7 +1010,7 @@ const loadCaseLibrary = async () => {
     const res = await fetch(`${API_BASE}/maintenance/records?page_size=500`);
     if (res.ok) {
       const data = await res.json();
-      cases.value = data.records || [];
+      cases.value = (data.records || []).filter((r: any) => r.synced === '已同步');
     }
   } catch { /* */ }
   loadingCases.value = false;
