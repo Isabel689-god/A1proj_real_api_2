@@ -576,12 +576,34 @@ def delete_manual(filename: str):
     return {"success": True, "filename": safe_name, "removed_docs": before - after}
 
 
+def _sync_mysql_graph(docs: list[dict]) -> dict:
+    """从文档中提取三元组，写入 MySQL 知识图谱。"""
+    try:
+        from app.pipeline.extractor import TripleExtractor
+        extractor = TripleExtractor()
+        result = extractor.extract_from_documents(docs)
+        return {
+            "total_docs": result.total_docs,
+            "raw_triples": result.raw_triples,
+            "valid_triples": result.valid_triples,
+            "unique_triples": result.unique_triples,
+            "entities_inserted": result.entities_inserted,
+            "relations_inserted": result.relations_inserted,
+            "errors": result.errors,
+        }
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
 @router.post("/sync", dependencies=[Depends(verify_admin)])
 def trigger_sync():
-    """触发全量知识库同步。"""
+    """触发全量知识库同步（向量索引 + JSON 图谱 + MySQL 图谱三元组）。"""
     svc = KnowledgeSyncService()
     result = svc.sync()
     _rebuild_index()
+    # 同步 MySQL 知识图谱三元组
+    graph_result = _sync_mysql_graph(svc.load_all_documents())
+    result["mysql_graph"] = graph_result
     return {"success": True, "result": result}
 
 
@@ -613,8 +635,10 @@ def trigger_single_sync(filename: str):
     state["updated_at"] = time.time()
     svc._save_sync_state(state)
     _rebuild_index()
+    # 同步 MySQL 知识图谱三元组
+    graph_result = _sync_mysql_graph(docs)
     return {"success": True, "filename": safe_name, "added_docs": len(docs),
-            "total_docs": len(all_docs)}
+            "total_docs": len(all_docs), "mysql_graph": graph_result}
 
 
 from app.knowledge.document_parser import file_md5

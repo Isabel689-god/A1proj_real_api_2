@@ -1,7 +1,10 @@
 <template>
   <div class="chat-view-container">
     <div class="system-header">
-      <div class="header-title">智能设备多模态检修控制台</div>
+      <div class="header-title">
+        <el-button v-if="viewingHistory" @click="exitHistoryView" size="small" text style="margin-right:10px;">← 返回</el-button>
+        智能设备多模态检修控制台
+      </div>
       <div class="header-right-actions" style="display: flex; align-items: center; gap: 16px;">
         <el-button type="primary" link class="user-center-btn" @click="showUserCenter = true">
           👤 个人空间 ({{ store.group }})
@@ -13,7 +16,7 @@
       <ChatSidebar />
       <div class="chat-main-area">
         <ChatMessageList @suggestion-click="handleSuggestionClick" />
-        <ChatComposer />
+        <ChatComposer v-if="!viewingHistory && !reportLocked" />
       </div>
 
       <div class="chat-right-panel" :class="{ collapsed: rightCollapsed }">
@@ -85,22 +88,23 @@
         <div v-if="store.hasPermission('submit_report')" class="section-block history-section">
           <div class="section-title">
             <span class="title-icon">📋</span>
-            <span>我的归档结单数据</span>
+            <span>我的维修记录</span>
+            <el-button size="small" type="primary" link style="margin-left:auto;" @click="showMaintenanceDrawer = true">🔧 维修记录与总结</el-button>
           </div>
           <div class="card-list-container">
             <el-empty v-if="historyReports.length === 0" description="暂无提报数据" :image-size="80" class="dark-empty" />
             <div v-for="item in historyReports" :key="item.orderId" class="glass-card data-card">
               <div class="card-info-group">
                 <div class="info-item col-order-id">
-                  <span class="info-label">工单编号</span>
+                  <span class="info-label">维修记录编号</span>
                   <span class="info-value mono-text">{{ item.orderId }}</span>
                 </div>
                 <div class="info-item col-time">
-                  <span class="info-label">派单时间</span>
+                  <span class="info-label">开始时间</span>
                   <span class="info-value">{{ item.dispatchTime }}</span>
                 </div>
                 <div class="info-item col-time">
-                  <span class="info-label">结单提报时间</span>
+                  <span class="info-label">结束时间</span>
                   <span class="info-value">{{ item.submitTime }}</span>
                 </div>
                 <div class="info-item col-round">
@@ -132,14 +136,7 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="showHistoryDialog" :title="`对话回溯 [单号: ${selectedHistoryOrder}]`" width="650px" destroy-on-close>
-      <div class="history-chat-viewer">
-        <div v-for="msg in selectedChatHistory" :key="msg.id" :class="['history-msg-item', msg.role]">
-          <div class="msg-sender">{{ msg.role === 'user' ? '操作员:' : 'AI助手:' }}</div>
-          <div class="msg-text" v-html="renderMarkdown(msg.content)"></div>
-        </div>
-      </div>
-    </el-dialog>
+    <MaintenanceRecordDrawer v-model="showMaintenanceDrawer" />
 
   </div>
 </template>
@@ -154,6 +151,7 @@ import ChatSidebar from '../components/ChatSidebar.vue';
 import ChatMessageList from '../components/ChatMessageList.vue';
 import ChatComposer from '../components/ChatComposer.vue';
 import RightPanel from '../components/RightPanel.vue';
+import MaintenanceRecordDrawer from '../components/MaintenanceRecordDrawer.vue';
 
 const router = useRouter();
 const store = useChatStore();
@@ -163,11 +161,21 @@ const handleSuggestionClick = (text: string) => {
 };
 const showUserCenter = ref(false);
 watch(showUserCenter, (v) => { if (v) loadMaintenanceStatus(); });
-const showHistoryDialog = ref(false);
+// 切换会话时根据是否已提交维修记录决定锁定状态
+watch(() => store.activeSessionId, (newId) => {
+  const hasReport = store.globalReports.some((r: any) => r.orderId === newId);
+  reportLocked.value = hasReport;
+});
 const rightCollapsed = ref(false);
-const selectedChatHistory = ref<Array<any>>([]);
-const selectedHistoryOrder = ref('');
 const historyReports = computed(() => store.globalReports);
+const viewingHistory = ref(false);
+const showMaintenanceDrawer = ref(false);
+const reportLocked = ref(false);
+const _prevSessionId = ref('');
+const _prevMessages = ref<any[]>([]);
+const _prevRightCollapsed = ref(false);
+const _prevLockedSOP = ref<any>(null);
+const _prevReportLocked = ref(false);
 const apiBase3 = import.meta.env.VITE_API_BASE || '';
 
 // 从数据库加载哪些工单已加入维修记录 + 已提交
@@ -288,21 +296,71 @@ const roleNameMap: Record<string, string> = {
 
 const handleReportSubmitted = (report: any) => {
   store.submitReport(report);
-  const newId = 'session_' + Date.now();
-  store.sessions.unshift({
-    id: newId,
-    title: '新检修任务',
-    messages: [],
-    updatedAt: Date.now()
-  });
-  store.activateSession(newId);
+  reportLocked.value = true;
   ElMessage.success('报告已提交归档');
 };
 
 const viewHistoryChat = (item: any) => {
-  selectedHistoryOrder.value = item.orderId;
-  selectedChatHistory.value = item.messages || [];
-  showHistoryDialog.value = true;
+  const msgs = item.messages || [];
+  if (!msgs.length) {
+    ElMessage.info('该记录无对话内容');
+    return;
+  }
+  // 保存当前会话状态
+  _prevSessionId.value = store.activeSessionId || '';
+  _prevRightCollapsed.value = rightCollapsed.value;
+  _prevLockedSOP.value = store.lockedSOP ? JSON.parse(JSON.stringify(store.lockedSOP)) : null;
+  _prevReportLocked.value = reportLocked.value;
+  reportLocked.value = false;
+  if (store.activeSession) {
+    _prevMessages.value = [...(store.activeSession.messages || [])];
+  }
+  // 创建临时历史会话
+  const historyId = '__history_view__';
+  // 从历史消息中提取 SOP（后端 _attach_latest_sop 挂在最后一条 assistant 消息上）
+  let historySOP: any = null;
+  const historyMessages = msgs.map((m: any, i: number) => {
+    const msg: any = {
+      id: `hist_${i}`,
+      role: m.role || 'user',
+      content: m.content || '',
+      timestamp: Date.now(),
+    };
+    if (m.current_sop) {
+      historySOP = m.current_sop;
+      msg.current_sop = m.current_sop;
+      msg.sop_steps = m.sop_steps || m.current_sop.steps;
+    }
+    return msg;
+  });
+  const historySession = {
+    id: historyId,
+    title: item.orderId || '历史对话',
+    messages: historyMessages,
+    updatedAt: Date.now(),
+  };
+  store.sessions = [historySession, ...store.sessions];
+  store.activeSessionId = historyId;
+  store.lockedSOP = historySOP ? JSON.parse(JSON.stringify(historySOP)) : null;
+  store.sopTick++;
+  viewingHistory.value = true;
+  rightCollapsed.value = true;
+};
+
+const exitHistoryView = () => {
+  viewingHistory.value = false;
+  rightCollapsed.value = _prevRightCollapsed.value;
+  store.lockedSOP = _prevLockedSOP.value ? JSON.parse(JSON.stringify(_prevLockedSOP.value)) : null;
+  store.sopTick++;
+  reportLocked.value = _prevReportLocked.value;
+  // 删除临时会话
+  store.sessions = store.sessions.filter((s: any) => s.id !== '__history_view__');
+  // 恢复原会话
+  if (_prevSessionId.value) {
+    store.activeSessionId = _prevSessionId.value;
+    const prev = store.sessions.find((s: any) => s.id === _prevSessionId.value);
+    if (prev) prev.messages = _prevMessages.value;
+  }
 };
 
 const loadInternLogs = () => {
@@ -600,7 +658,7 @@ onMounted(() => {
   height: 44px;
 }
 
-/* ========== 归档结单数据 - 与管理端对齐 ========== */
+/* ========== 维修记录 - 与管理端对齐 ========== */
 .history-section {
   flex: 1;
   min-height: 0;
@@ -692,49 +750,19 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
-/* ========== 历史对话弹窗 ========== */
-.history-chat-viewer {
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 10px;
-  background: var(--bg-dark);
-  border-radius: 6px;
-}
-
-.history-msg-item {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-}
-
-.history-msg-item.user {
+/* ========== 历史对话查看（内嵌模式） ========== */
+.history-view-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
   background: var(--bg-glass);
+  border-bottom: 1px solid var(--border-glass);
 }
 
-.history-msg-item.assistant {
-  background: var(--bg-card);
-  border: 1px solid var(--border-glass);
-}
-
-.msg-sender {
-  font-size: 12px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-
-.msg-text {
+.history-view-banner .banner-title {
   font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.5;
-}
-
-/* ✅ 新增：图谱网络弹窗内部承载容器样式 */
-.graph-dialog-body {
-  height: 72vh;
-  width: 100%;
-  background: var(--bg-darker);
-  border-radius: 8px;
-  overflow: hidden;
+  color: var(--text-muted);
 }
 
 /* ✅ 新增：深度穿透强行适配 Element Plus Dialog 暗色炫酷质感 */

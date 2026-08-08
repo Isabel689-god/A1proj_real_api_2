@@ -31,6 +31,7 @@ export const useChatStore = defineStore('chat', {
 
     globalReports: JSON.parse(localStorage.getItem('INDUSTRIAL_GLOBAL_REPORTS') || '[]') as Array<any>,
     sopTick: 0,  // SOP 变更计数器，强制前端刷新
+    lockedSOP: null as any,  // 首轮锁定的 SOP 结构，后续只更新状态
     });
   },
   getters: {
@@ -104,9 +105,29 @@ export const useChatStore = defineStore('chat', {
       localStorage.setItem('a1proj_sessions', JSON.stringify(meta));
     },
 
+    _syncLockedSOP() {
+      // 从当前会话消息中提取 SOP 并同步到 lockedSOP
+      const session = this.activeSession;
+      if (!session?.messages?.length) {
+        this.lockedSOP = null;
+        this.sopTick++;
+        return;
+      }
+      // 从最后一条 assistant 消息获取 SOP
+      for (let i = session.messages.length - 1; i >= 0; i--) {
+        const m = session.messages[i];
+        if (m.role === 'assistant' && m.current_sop) {
+          this.lockedSOP = JSON.parse(JSON.stringify(m.current_sop));
+          this.sopTick++;
+          return;
+        }
+      }
+      this.lockedSOP = null;
+      this.sopTick++;
+    },
+
     async activateSession(id: string) {
       this.activeSessionId = id;
-      // 如果消息为空，从后端加载
       const session = this.sessions.find(s => s.id === id);
       if (session && (!session.messages || session.messages.length === 0)) {
         try {
@@ -130,9 +151,13 @@ export const useChatStore = defineStore('chat', {
           }
         } catch { /* ignore */ }
       }
+      // 同步 lockedSOP，确保右侧面板显示当前会话的 SOP
+      this._syncLockedSOP();
     },
 
     createNewSession() {
+      this.lockedSOP = null;
+      this.sopTick++;
       const s: ConversationSession = {
         id: 'session_' + Date.now(),
         title: '新检修任务',
@@ -247,14 +272,17 @@ export const useChatStore = defineStore('chat', {
             case 'sop_version':
               targetMsg.current_sop = chunk.sop;
               targetMsg.sop_steps = chunk.sop?.steps || targetMsg.sop_steps || [];
-              console.log('sop_version received', chunk.sop?.steps?.map((s:any) => s.step_status || '?'));
+              // 首轮锁定 SOP 结构
+              if (!this.lockedSOP && chunk.sop?.steps?.length) {
+                this.lockedSOP = JSON.parse(JSON.stringify(chunk.sop));
+              }
               this.sopTick++;
               break;
             case 'sop_state':
-              // Agent 实时更新 SOP 步骤状态 — 当前消息无 current_sop 时从 state 构建
               if (chunk.state?.steps) {
-                if (!targetMsg.current_sop) {
-                  targetMsg.current_sop = {
+                // 首轮：从 sop_state 构建锁定 SOP
+                if (!this.lockedSOP) {
+                  this.lockedSOP = {
                     version: 1,
                     steps: chunk.state.steps.map((s: any) => ({
                       title: s.title || '',
@@ -266,16 +294,18 @@ export const useChatStore = defineStore('chat', {
                     all_done: chunk.state.all_done || false,
                   };
                 } else {
+                  // 后续：只更新锁定 SOP 的步骤状态
                   const stateSteps = chunk.state.steps;
-                  const sopSteps = targetMsg.current_sop.steps || [];
-                  for (let i = 0; i < Math.min(sopSteps.length, stateSteps.length); i++) {
-                    sopSteps[i].step_status = stateSteps[i].status;
-                    sopSteps[i].step_note = stateSteps[i].note;
+                  const lockedSteps: any[] = this.lockedSOP.steps || [];
+                  for (let i = 0; i < Math.min(lockedSteps.length, stateSteps.length); i++) {
+                    lockedSteps[i].step_status = stateSteps[i].status;
+                    lockedSteps[i].step_note = stateSteps[i].note;
                   }
-                  targetMsg.current_sop.current_step = chunk.state.current_step;
-                  targetMsg.current_sop.all_done = chunk.state.all_done;
+                  this.lockedSOP.current_step = chunk.state.current_step;
+                  this.lockedSOP.all_done = chunk.state.all_done;
                 }
-                targetMsg.current_sop = { ...targetMsg.current_sop };
+                // 同步到当前消息供文本回退
+                targetMsg.current_sop = { ...this.lockedSOP };
               }
               this.sopTick++;
               break;

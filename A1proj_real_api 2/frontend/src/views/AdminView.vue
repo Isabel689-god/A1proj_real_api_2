@@ -21,9 +21,9 @@
           <el-icon><Folder /></el-icon>
           <span>手册文件管理</span>
         </el-menu-item>
-        <el-menu-item index="upload_audit" v-if="store.hasPermission('audit_uploads')">
-          <el-icon><DocumentChecked /></el-icon>
-          <span>手册申请审核</span>
+        <el-menu-item index="case_library">
+          <el-icon><Collection /></el-icon>
+          <span>维修案例库</span>
         </el-menu-item>
         <el-menu-item index="records">
           <el-icon><List /></el-icon>
@@ -211,8 +211,7 @@
                 </div>
               </div>
               <div class="card-actions">
-                <el-button size="small" type="primary" link @click="viewManual(item.filename)">查看内容</el-button>
-                <el-button v-if="item.type === 'PDF'" size="small" type="success" link @click="viewManual(item.filename, true)">PDF 预览</el-button>
+                <el-button size="small" type="primary" link @click="viewManual(item.filename, item.type === 'PDF')">查看</el-button>
                 <el-button size="small" type="primary" link @click="syncSingle(item.filename)">单独同步</el-button>
                 <el-popconfirm title="确定删除该手册文件吗？" @confirm="deleteManual(item.filename)">
                   <template #reference>
@@ -226,52 +225,54 @@
         </div>
       </div>
 
-      <!-- 手册申请审核 -->
-      <div v-if="activeMenu === 'upload_audit'" class="content-panel">
+      <!-- 维修案例库 -->
+      <div v-if="activeMenu === 'case_library'" class="content-panel">
         <div class="glass-card inner-card">
           <div class="panel-toolbar card-header">
-            <h4>手册录入申请审核</h4>
+            <h4>维修案例库</h4>
             <div class="toolbar-actions">
-              <el-radio-group v-model="auditStatusFilter" size="small" @change="loadManualRequests">
-                <el-radio-button value="">全部</el-radio-button>
-                <el-radio-button value="pending">待审核</el-radio-button>
-                <el-radio-button value="approved">已通过</el-radio-button>
-                <el-radio-button value="rejected">已拒绝</el-radio-button>
-              </el-radio-group>
-              <el-button size="small" @click="loadManualRequests">刷新</el-button>
+              <el-input v-model="caseSearch" placeholder="搜索故障类型/设备型号" size="small" style="width:220px" clearable />
+              <el-button size="small" @click="loadCaseLibrary">刷新</el-button>
+              <el-button size="small" type="primary" @click="syncAllMaint" :loading="maintSyncAll">全量同步</el-button>
             </div>
           </div>
-          <div class="card-list-container" v-loading="loadingRequests">
-            <div v-for="req in manualRequests" :key="req.id" class="glass-card data-card">
+          <div class="card-list-container" v-loading="loadingCases">
+            <div v-for="c in filteredCases" :key="c.record_id" class="glass-card data-card">
               <div class="card-info-group">
-                <div class="info-item col-filename">
-                  <span class="info-label">文件名</span>
-                  <span class="info-value text-ellipsis">{{ req.filename }}</span>
+                <div class="info-item col-order-id">
+                  <span class="info-label">记录编号</span>
+                  <span class="info-value mono-text">{{ c.record_id?.slice(0,16) }}</span>
                 </div>
-                <div class="info-item col-applicant">
-                  <span class="info-label">申请人</span>
-                  <span class="info-value">{{ req.applicant }}</span>
+                <div class="info-item col-time">
+                  <span class="info-label">故障类型</span>
+                  <span class="info-value">{{ c.fault_type?.slice(0,30) || '未知' }}</span>
                 </div>
-                <div class="info-item col-size">
-                  <span class="info-label">文件大小</span>
-                  <span class="info-value">{{ formatKbSize(Math.round(req.file_size / 1024)) }} KB</span>
+                <div class="info-item col-time">
+                  <span class="info-label">设备型号</span>
+                  <span class="info-value">{{ c.device_model?.slice(0,25) || '未指定' }}</span>
+                </div>
+                <div class="info-item col-round">
+                  <span class="info-label">维修人员</span>
+                  <span class="info-value">{{ c.technician || '未知' }}</span>
                 </div>
                 <div class="info-item col-status">
-                  <span class="info-label">状态</span>
-                  <el-tag :type="getStatusType(req.status)" size="small">{{ getStatusText(req.status) }}</el-tag>
+                  <span class="info-label">同步</span>
+                  <el-tag :type="c.synced==='已同步'?'success':'info'" size="small">{{ c.synced || '未同步' }}</el-tag>
                 </div>
               </div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+                原因：{{ c.fault_cause?.slice(0,80) || '无' }}
+              </div>
+              <div style="font-size:12px;color:var(--text-muted);">
+                方案：{{ c.solution?.slice(0,80) || '无' }}
+              </div>
               <div class="card-actions">
-                <el-button size="small" type="primary" link @click="viewManual(req.filename)">查看内容</el-button>
-                <el-button size="small" type="success" link v-if="req.status === 'pending'" @click="reviewRequest(req, true)">
-                  通过
-                </el-button>
-                <el-button size="small" type="danger" link v-if="req.status === 'pending'" @click="reviewRequest(req, false)">
-                  拒绝
-                </el-button>
+                <el-button v-if="c.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(c)">同步</el-button>
+                <el-button v-else type="warning" link size="small" @click="unsyncGraph(c)">取消同步</el-button>
+                <el-button type="primary" link size="small" @click="viewMaintDetail(c)">查看</el-button>
               </div>
             </div>
-            <el-empty v-if="manualRequests.length === 0 && !loadingRequests" description="暂无申请记录" />
+            <el-empty v-if="filteredCases.length === 0 && !loadingCases" description="暂无维修记录" />
           </div>
         </div>
       </div>
@@ -289,15 +290,15 @@
             <div v-for="item in store.globalReports" :key="item.orderId" class="glass-card data-card">
               <div class="card-info-group">
                 <div class="info-item col-order-id">
-                  <span class="info-label">对话记录编号</span>
+                  <span class="info-label">维修记录编号</span>
                   <span class="info-value">{{ item.orderId }}</span>
                 </div>
                 <div class="info-item col-time">
-                  <span class="info-label">派单时间</span>
+                  <span class="info-label">开始时间</span>
                   <span class="info-value">{{ item.dispatchTime }}</span>
                 </div>
                 <div class="info-item col-time">
-                  <span class="info-label">结单提报时间</span>
+                  <span class="info-label">结束时间</span>
                   <span class="info-value">{{ item.submitTime }}</span>
                 </div>
                 <div class="info-item col-round">
@@ -532,10 +533,19 @@ const showHistoryDialog = ref(false);
 const selectedChatHistory = ref<any[]>([]);
 const selectedOrder = ref('');
 
-// 手册申请审核
-const manualRequests = ref<any[]>([]);
-const loadingRequests = ref(false);
-const auditStatusFilter = ref('');
+// 维修案例库
+const cases = ref<any[]>([]);
+const loadingCases = ref(false);
+const caseSearch = ref('');
+const filteredCases = computed(() => {
+  if (!caseSearch.value) return cases.value;
+  const q = caseSearch.value.toLowerCase();
+  return cases.value.filter((c: any) =>
+    (c.fault_type || '').toLowerCase().includes(q) ||
+    (c.device_model || '').toLowerCase().includes(q) ||
+    (c.technician || '').toLowerCase().includes(q)
+  );
+});
 
 // ═══════════ 权限组管理 ═══════════
 const permGroups = ref<Record<string, any>>({});
@@ -624,7 +634,6 @@ const exportMaintCsv = () => {
 };
 
 const syncToGraph = async (row: any) => {
-  // 先立即更新 UI
   row.synced = '已同步';
   try {
     const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=sync`, { method: 'POST' });
@@ -638,6 +647,7 @@ const syncToGraph = async (row: any) => {
     row.synced = '未同步';
     ElMessage.error('同步失败');
   }
+  loadCaseLibrary();
 };
 
 const unsyncGraph = async (row: any) => {
@@ -654,11 +664,13 @@ const unsyncGraph = async (row: any) => {
     row.synced = '已同步';
     ElMessage.error('操作失败');
   }
+  loadCaseLibrary();
 };
 
 const maintSyncAll = ref(false);
 const syncAllMaint = async () => {
-  const unsynced = maintRecords.value.filter((r: any) => r.synced !== '已同步');
+  const targetList = activeMenu.value === 'case_library' ? cases : maintRecords;
+  const unsynced = targetList.value.filter((r: any) => r.synced !== '已同步');
   if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); return; }
   maintSyncAll.value = true;
   let ok = 0;
@@ -671,6 +683,8 @@ const syncAllMaint = async () => {
   }
   maintSyncAll.value = false;
   ElMessage.success(`全量同步完成: ${ok}/${unsynced.length} 条`);
+  loadCaseLibrary();
+  loadMaintRecords();
 };
 
 const loadGroups = async () => {
@@ -946,7 +960,7 @@ const pageTitle = computed(() => {
   const map: Record<string, string> = {
     users: '组织架构与权限管控 (RBAC & Permission Groups)',
     manuals: '手册文件在线管理 (Manual Management)',
-    upload_audit: '手册录入申请审核',
+    case_library: '维修案例库 (Case Library)',
     records: '全局业务闭环审计 (Audit Logs)',
     monitor: '系统运维监控面板 (System Monitor)',
     knowledge_mysql: '知识图谱 (MySQL)',
@@ -960,24 +974,6 @@ const formatKbSize = (kb: number | string): string => {
   const num = Number(kb);
   if (isNaN(num)) return '-';
   return num.toLocaleString('en-US');
-};
-
-const getStatusType = (status: string) => {
-  const map: Record<string, string> = {
-    pending: 'warning',
-    approved: 'success',
-    rejected: 'danger'
-  };
-  return map[status] || 'info';
-};
-
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝'
-  };
-  return map[status] || status;
 };
 
 const getVectorStatusType = (status: string) => {
@@ -1002,48 +998,20 @@ const handleMenuSelect = (index: string) => {
   if (index === 'users') { loadGroups(); loadUsers(); }
   if (index === 'manuals') loadManualList();
   if (index === 'monitor') loadSystemStatus();
-  if (index === 'upload_audit') loadManualRequests();
+  if (index === 'case_library') loadCaseLibrary();
 };
 
-// ==================== 手册申请审核 ====================
-const loadManualRequests = async () => {
-  loadingRequests.value = true;
+// ==================== 维修案例库 ====================
+const loadCaseLibrary = async () => {
+  loadingCases.value = true;
   try {
-    const res = await fetch(`${API_BASE}/knowledge/manuals/requests?status=${auditStatusFilter.value}`, {
-      headers: { 'X-Admin-Token': ADMIN_TOKEN }
-    });
-    const data = await res.json();
-    manualRequests.value = data.requests || [];
-  } catch (e) {
-    ElMessage.error('加载申请列表失败');
-  } finally {
-    loadingRequests.value = false;
-  }
-};
-
-const reviewRequest = async (req: any, approve: boolean) => {
-  const action = approve ? '通过' : '拒绝';
-  try {
-    await ElMessageBox.confirm(
-      `确定${action}该手册申请吗？`,
-      '审核确认',
-      { type: 'warning' }
-    );
-    const res = await fetch(`${API_BASE}/knowledge/manuals/requests/${req.id}/review`, {
-      method: 'POST',
-      headers: {
-        'X-Admin-Token': ADMIN_TOKEN,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ approve, reviewer: store.username })
-    });
+    const res = await fetch(`${API_BASE}/maintenance/records?page_size=500`);
     if (res.ok) {
-      ElMessage.success(`已${action}申请`);
-      loadManualRequests();
+      const data = await res.json();
+      cases.value = data.records || [];
     }
-  } catch (e) {
-    // 取消确认不提示
-  }
+  } catch { /* */ }
+  loadingCases.value = false;
 };
 
 // ==================== 工单审计 ====================
@@ -1149,7 +1117,26 @@ const handleBeforeUpload = (file: File) => {
 };
 
 const handleUploadManual = async (options: any) => {
-  ElMessage.info('手册上传功能已在侧边栏实现');
+  const file = options.file;
+  if (!file) return;
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/knowledge/manuals/upload`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': ADMIN_TOKEN },
+      body: formData,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      ElMessage.success(`已上传 ${data.filename}（${data.size_kb}KB）`);
+      loadManualList();
+    } else {
+      ElMessage.error(data.detail || '上传失败');
+    }
+  } catch (e: any) {
+    ElMessage.error('上传失败: ' + (e?.message || ''));
+  }
 };
 
 const deleteManual = async (filename: string) => {
@@ -1194,7 +1181,8 @@ const doSyncSingle = async (filename: string) => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '同步失败');
     if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: data.status || '已同步' };
-    ElMessage.success(`${filename} 已同步，新增 ${data.added_docs || 0} 条切片`);
+    const mg = data.mysql_graph || {};
+    ElMessage.success(`${filename} 已同步：${data.added_docs || 0} 切片，图谱 ${mg.entities_inserted || 0} 实体 ${mg.relations_inserted || 0} 关系`);
   } catch (e: any) {
     if (idx >= 0) manualList.value[idx] = { ...manualList.value[idx], status: '已同步' };
     ElMessage.success('同步成功');
@@ -1226,7 +1214,10 @@ const syncAllManuals = async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '全量同步失败');
     manualList.value = manualList.value.map((m: any) => ({ ...m, status: '已同步' }));
-    ElMessage.success(`全量同步完成，共 ${data.result?.document_count || 0} 条文档`);
+    const mg = data.result?.mysql_graph || {};
+    const triples = mg.entities_inserted || 0;
+    const relations = mg.relations_inserted || 0;
+    ElMessage.success(`全量同步完成：${data.result?.document_count || 0} 条文档，图谱 ${triples} 实体 ${relations} 关系`);
   } catch (e: any) {
     manualList.value = manualList.value.map((m: any) => ({ ...m, status: '已同步' }));
     ElMessage.success('全量同步成功');
