@@ -24,6 +24,14 @@ export interface StreamChunk {
 // 后端API基础地址
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
+function getHeaders(isFormData = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem('a1proj_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (!isFormData) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
 /**
  * 【流式输出版】发送聊天消息并返回异步生成器
  * 完全兼容真实后端 FastAPI StreamingResponse 格式
@@ -64,17 +72,14 @@ export async function* sendChatMessageStream(
 
       response = await fetch(`${API_BASE}/chat/stream/multipart`, {
         method: 'POST',
-        
+        headers: getHeaders(true),
         body: formData
       });
     } else {
       // 纯文本使用JSON接口
       response = await fetch(`${API_BASE}/chat/agent`, {
         method: 'POST',
-        
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           user_id: username || 'user_001',
           session_id: sessionId,

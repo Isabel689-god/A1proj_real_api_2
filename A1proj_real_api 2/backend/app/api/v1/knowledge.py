@@ -27,12 +27,7 @@ from app.pipeline import TripleExtractor
 router = APIRouter(prefix="/knowledge", tags=["动态知识库"])
 
 
-def verify_admin(x_admin_token: str | None = Header(default=None)):
-    settings = get_settings()
-    if not x_admin_token or x_admin_token != settings.ADMIN_TOKEN:
-        raise HTTPException(
-            status_code=403, detail="需要有效管理员 Token（Header: X-Admin-Token）"
-        )
+from app.core.auth import verify_admin  # noqa: F811 — 替换旧 admin token 校验
 
 
 def _rebuild_index():

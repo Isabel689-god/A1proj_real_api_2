@@ -12,16 +12,12 @@ DEFAULT_GROUPS = {
         "description": "仅可对话和查看图谱",
         "permissions": ["chat", "view_graph"],
     },
-    "普通维修人员": {
-        "description": "可对话、查看图谱、提报工单、申请上传手册",
-        "permissions": ["chat", "view_graph", "submit_report", "request_upload"],
-    },
-    "高级维修人员": {
-        "description": "可对话、图谱、提报、直接上传手册、更新图谱、审核上传",
-        "permissions": ["chat", "view_graph", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload"],
+    "维修人员": {
+        "description": "可对话、提报工单",
+        "permissions": ["chat", "submit_report"],
     },
     "管理人员": {
-        "description": "全部功能权限，含用户管理",
+        "description": "全部功能权限，含用户管理和手册上传",
         "permissions": ["chat", "view_graph", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload"],
     },
 }

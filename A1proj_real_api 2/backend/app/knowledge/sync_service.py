@@ -99,16 +99,22 @@ class KnowledgeSyncService:
         )
         self._save_sync_state(state)
 
-        # 重建 DashVector 向量索引 + 刷新对话缓存
+        # 重建向量索引（DashVector 云服务 + FAISS 本地兜底）
         try:
             from app.langchain.vector_store import DashVectorStore
-
             DashVectorStore().save(documents)
-            from app.api.v1.chat import reload
-
-            reload()
+        except Exception:
+            pass  # DashVector 未配置，用本地 FAISS
+        try:
+            from app.langchain.local_vector_store import get_local_store
+            get_local_store().save(documents)
         except Exception as exc:
             errors.append(f"向量索引重建失败: {exc}")
+        try:
+            from app.api.v1.chat import reload
+            reload()
+        except Exception:
+            pass
 
         return {
             "document_count": len(documents),

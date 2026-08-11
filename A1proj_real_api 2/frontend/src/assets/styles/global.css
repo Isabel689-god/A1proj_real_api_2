@@ -56,8 +56,8 @@
   --border-light: rgba(0, 150, 136, 0.22);
 
   --text-primary: #1a202c;
-  --text-secondary: #4a5568;
-  --text-muted: #64748b;
+  --text-secondary: #2d3748;
+  --text-muted: #4a5568;
   --text-inverse: #ffffff;
 
   --success: #2f855a;
@@ -278,4 +278,33 @@ html, body, #app, .el-app, .el-container, .el-main, .el-aside,
 [data-theme="light"] .el-message {
   background: var(--bg-card) !important;
   border-color: var(--border-light) !important;
+}
+
+/* 浅色模式全局强制深色文字 */
+[data-theme="light"] {
+  --el-text-color-primary: #111 !important;
+  --el-text-color-regular: #1a1a2e !important;
+  --el-text-color-secondary: #2d2d3f !important;
+  --el-text-color-placeholder: #555 !important;
+}
+[data-theme="light"] * {
+  color-scheme: light;
+}
+[data-theme="light"] .el-tag,
+[data-theme="light"] .el-button--default,
+[data-theme="light"] .el-button.is-link,
+[data-theme="light"] .el-table,
+[data-theme="light"] .el-step__title,
+[data-theme="light"] .el-step__description,
+[data-theme="light"] .el-collapse-item__header,
+[data-theme="light"] .el-collapse-item__content,
+[data-theme="light"] .el-menu-item,
+[data-theme="light"] .el-sub-menu__title,
+[data-theme="light"] .el-form-item__label,
+[data-theme="light"] .el-checkbox__label,
+[data-theme="light"] .el-radio__label,
+[data-theme="light"] .el-empty__description,
+[data-theme="light"] .el-select-dropdown__item,
+[data-theme="light"] .el-dropdown-menu__item {
+  color: #1a1a2e !important;
 }

@@ -336,16 +336,22 @@ export const useChatStore = defineStore('chat', {
     },
 
     // ✅ 登录状态注入
-    setUserLoggedIn(status: boolean, group: string, username: string, permissions: string[] = []) {
+    setUserLoggedIn(status: boolean, group: string, username: string, permissions: string[] = [], token: string = '') {
       this.isLoggedIn = status;
       this.group = group;
       this.username = username;
       this.permissions = permissions;
       if (status) {
         localStorage.setItem(AUTH_KEY, JSON.stringify({ username, group, permissions }));
+        if (token) localStorage.setItem('a1proj_token', token);
       } else {
         localStorage.removeItem(AUTH_KEY);
+        localStorage.removeItem('a1proj_token');
       }
+    },
+
+    getAuthToken(): string {
+      return localStorage.getItem('a1proj_token') || '';
     },
 
     submitReport(report: any) {

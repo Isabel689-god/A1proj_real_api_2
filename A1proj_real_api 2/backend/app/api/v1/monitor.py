@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fastapi import APIRouter, Depends
@@ -80,19 +81,31 @@ def _safe_dir_status(path: Path) -> dict:
 def get_system_status(_=Depends(verify_admin)):
     settings = get_settings()
     sync_service = KnowledgeSyncService()
-    state = sync_service._load_sync_state()
+    state = sync_service._load_sync_state()  # 仅用于最后同步时间/错误
 
-    # DashVector 向量检索（阿里云线上服务）
+    # DashVector / FAISS
     dashvector_configured = bool(settings.DASHVECTOR_ENDPOINT and settings.DASHVECTOR_API_KEY)
+    faiss_path = Path(settings.KNOWLEDGE_DIR) / "faiss_index" / "index.faiss"
+    faiss_available = faiss_path.exists()
 
-    # 知识库统计
-    doc_count = state.get("document_count", 0)
-    manual_count = state.get("manual_count", 0)
-    dynamic_count = state.get("dynamic_count", 0)
-    pdf_count = state.get("pdf_count", 0)
-    docx_count = state.get("docx_count", 0)
+    # 实时统计：直接从 knowledge.json 和物理文件计算
+    knowledge_path = Path(settings.KNOWLEDGE_DIR) / settings.KNOWLEDGE_JSON
+    if knowledge_path.exists():
+        try:
+            all_docs = json.loads(knowledge_path.read_text(encoding="utf-8"))
+        except Exception:
+            all_docs = []
+        doc_count = len(all_docs)
+        manual_count = len([d for d in all_docs if d.get("source")])
+        dynamic_count = doc_count - manual_count
+    else:
+        doc_count = manual_count = dynamic_count = 0
+
     physical_files = sync_service._list_manual_files()
     physical_pdf_count = sum(1 for p in physical_files if p.suffix.lower() == ".pdf")
+    pdf_count = physical_pdf_count
+    docx_count = sum(1 for p in physical_files if p.suffix.lower() == ".docx")
+    synced_files = len(state.get("files", {}))  # 已同步的手册文件数
 
     # 文件路径状态
     data_dir_status = _safe_dir_status(Path(settings.DATA_DIR))
@@ -112,11 +125,17 @@ def get_system_status(_=Depends(verify_admin)):
             "label": "需检查",
             "reason": "同步状态存在错误：" + "；".join(state.get("errors", [])[:2]),
         }
+    elif faiss_available:
+        vector_index = {
+            "status": "healthy",
+            "label": "本地正常",
+            "reason": "FAISS 本地向量索引已就绪，知识库文档可用于检索",
+        }
     elif not dashvector_configured:
         vector_index = {
-            "status": "missing",
-            "label": "未配置",
-            "reason": "DASHVECTOR_ENDPOINT 或 DASHVECTOR_API_KEY 未配置",
+            "status": "ok",
+            "label": "关键词检索",
+            "reason": "DashVector 未配置，使用本地关键词搜索。安装 sentence-transformers 可启用向量语义搜索",
         }
     else:
         vector_index = {
@@ -149,12 +168,12 @@ def get_system_status(_=Depends(verify_admin)):
             "manual_documents": manual_count,
             "dynamic_documents": dynamic_count,
             "pdf_files": physical_pdf_count,
-            "parsed_pdf_files": pdf_count,
             "docx_files": docx_count,
+            "physical_files": len(physical_files),
             "document_chunks": doc_count,
             "dashvector_configured": dashvector_configured,
             "vector_index": vector_index,
-            "vector_entries": doc_count if vector_index["status"] == "healthy" else 0,
+            "vector_entries": doc_count if vector_index["status"] in ("healthy", "ok") else 0,
             "last_sync_files": list(state.get("files", {}).keys()),
             "sync_errors": state.get("errors", [])
         },

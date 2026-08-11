@@ -9,6 +9,7 @@ from app.db.models import (
     MaintenanceRecord,
     Message,
     Session,
+    SopVersion,
     User,
     Relation,
     Solution,

@@ -31,12 +31,13 @@ class UserService:
         groups = self._load_groups()
         fallback_groups = {
             "基础访客": ["chat", "view_graph"],
-            "普通维修人员": ["chat", "submit_report", "request_upload", "view_graph"],
-            "高级维修人员": ["chat", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload", "view_graph"],
+            "维修人员": ["chat", "submit_report"],
             "管理人员": ["chat", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload", "view_graph"],
             # 向后兼容旧组名
             "访客组": ["chat", "view_graph"],
             "管理组": ["chat", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload", "view_graph"],
+            "普通维修人员": ["chat", "submit_report"],
+            "高级维修人员": ["chat", "submit_report"],
         }
         base = groups.get(group, {}).get("permissions", fallback_groups.get(group, []))
         if "all" in base:
@@ -50,9 +51,9 @@ class UserService:
     def _init_default_users(self):
         defaults = [
             ("admin", "admin", "管理人员"),
-            ("senior_01", "123", "高级维修人员"),
-            ("emp_01", "123", "普通维修人员"),
-            ("employee_01", "123", "普通维修人员"),
+            ("senior_01", "123", "维修人员"),
+            ("emp_01", "123", "维修人员"),
+            ("employee_01", "123", "维修人员"),
             ("intern_01", "123", "基础访客"),
         ]
         s = get_session()

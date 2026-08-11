@@ -131,28 +131,44 @@ async def chat_stream(req: ChatStreamRequest):
 
             if sources:
                 yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
-            sop_steps = _parse_sop_steps(full_answer)
-            if sop_steps:
-                try:
-                    sop_record = sop_service.save_version(
-                        req.session_id,
-                        req.user_id,
-                        req.question,
-                        sop_steps[:8],
-                        full_answer,
-                    )
-                    # 注入 Agent 通过 sop_manage 维护的步骤状态
-                    state = sop_service.get_sop_state(req.session_id)
-                    if state.get("exists"):
-                        sop_record["current_step"] = state.get("current_step", 1)
-                        sop_record["all_done"] = state.get("all_done", False)
-                        for i, s in enumerate(sop_record.get("steps", [])):
-                            if i < len(state.get("steps", [])):
-                                s["step_status"] = state["steps"][i].get("status", "pending")
-                                s["step_note"] = state["steps"][i].get("note", "")
-                    yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
-                except Exception as e:
-                    logger.warning(f"save_version 失败: {e}")
+            # 已有 SOP 时跳过步骤解析，永不重建（对齐 chat_agent 端点）
+            existing = sop_service.get_latest(req.session_id)
+            sop_record = None
+            if not (existing and existing.get("steps")):
+                sop_steps = _parse_sop_steps(full_answer)
+                if sop_steps:
+                    try:
+                        sop_record = sop_service.save_version(
+                            req.session_id,
+                            req.user_id,
+                            req.question,
+                            sop_steps[:8],
+                            full_answer,
+                        )
+                        # 注入 Agent 通过 sop_manage 维护的步骤状态
+                        state = sop_service.get_sop_state(req.session_id)
+                        if state.get("exists"):
+                            sop_record["current_step"] = state.get("current_step", 1)
+                            sop_record["all_done"] = state.get("all_done", False)
+                            for i, s in enumerate(sop_record.get("steps", [])):
+                                if i < len(state.get("steps", [])):
+                                    s["step_status"] = state["steps"][i].get("status", "pending")
+                                    s["step_note"] = state["steps"][i].get("note", "")
+                        yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
+                    except Exception as e:
+                        logger.warning(f"save_version 失败: {e}")
+            # 即使不重建，也要推 sop_version 给前端
+            elif existing:
+                sop_record = existing
+                state = sop_service.get_sop_state(req.session_id)
+                if state.get("exists"):
+                    sop_record["current_step"] = state.get("current_step", 1)
+                    sop_record["all_done"] = state.get("all_done", False)
+                    for i, s in enumerate(sop_record.get("steps", [])):
+                        if i < len(state.get("steps", [])):
+                            s["step_status"] = state["steps"][i].get("status", "pending")
+                            s["step_note"] = state["steps"][i].get("note", "")
+                yield f"data: {json.dumps({'type': 'sop_version', 'sop': sop_record}, ensure_ascii=False)}\n\n"
             yield 'data: {"type": "done"}\n\n'
 
         return StreamingResponse(sse_generator(), media_type="text/event-stream")
@@ -177,6 +193,9 @@ async def chat_stream_multipart(
         user_id=user_id, session_id=session_id,
         question=question, device_model=device_model, image_url=image_url,
     )
+    # 有图片时走 Agent 路径，显示完整工作流程
+    if image_url:
+        return await chat_agent(req)
     return await chat_stream(req)
 
 
@@ -288,11 +307,11 @@ def _parse_sop_steps(text: str) -> list[dict]:
     return steps[:8]
 
 
-def _auto_apply_sop_updates(session_id: str, text: str) -> None:
-    """扫描 Agent 回复文本中的 SOP 状态更新意图，自动执行。
-    兜底 DeepSeek 模型只说不做的问题。"""
+def _auto_apply_sop_updates(session_id: str, text: str, user_text: str = "") -> None:
+    """扫描 Agent 回复及用户提问中的 SOP 状态更新意图，自动执行。"""
     import re as _r
     try:
+        combined = f"{user_text}\n{text}" if user_text else text
         state = sop_service.get_sop_state(session_id)
         if not state.get("exists") or not state.get("steps"):
             return
@@ -300,50 +319,75 @@ def _auto_apply_sop_updates(session_id: str, text: str) -> None:
         total = len(state["steps"])
         batch: list[tuple[int, str, str]] = []
 
+        _CN_MAP = {"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9,"十":10,"两":2}
+        def _num(s: str) -> int:
+            s = s.strip()
+            if s.isdigit(): return int(s)
+            if s in _CN_MAP: return _CN_MAP[s]
+            if s.endswith("十"):
+                n = _CN_MAP.get(s[0], 0)
+                return n * 10 if n > 0 else 10
+            if s.startswith("十"):
+                n = _CN_MAP.get(s[1], 0)
+                return 10 + n if n > 0 else 10
+            return 999
+
+        _NUM = r'(\d+|[一二三四五六七八九十两]+)'
+
+        # "全部步骤已完成" / "所有步骤已完成"
+        if _r.search(r'(?:全部|所有)\s*步骤\s*(?:已|已经|均已)?\s*(?:完成|做完|done)', combined):
+            for i in range(1, total + 1):
+                batch.append((i, "done", "自动"))
+
+        # "所有故障已解决" / "故障已解决" / "问题已解决"
+        if _r.search(r'(?:所有|全部)\s*(?:故障|问题)\s*(?:已|已经|均已)?\s*(?:解决|修复|排除|处理完)', combined):
+            for i in range(1, total + 1):
+                batch.append((i, "done", "自动"))
+
         # "第4步之前已完成" → 前3步 done
-        m = _r.search(r'第\s*(\d+)\s*步?\s*之前\s*(?:已|全部)?\s*(?:完成|做完)', text)
+        m = _r.search(r'第\s*' + _NUM + r'\s*步?\s*之前\s*(?:已|全部)?\s*(?:完成|做完)', combined)
         if m:
-            n = int(m.group(1)) - 1
+            n = _num(m.group(1)) - 1
             if n >= 1:
                 for i in range(1, min(n, total) + 1):
                     batch.append((i, "done", "自动"))
 
         # "前3步已完成" / "前面3步已完成" → 前N步 done
-        m = _r.search(r'前\s*面?\s*(\d+)\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', text)
+        m = _r.search(r'前\s*面?\s*' + _NUM + r'\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', combined)
         if m:
-            n = int(m.group(1))
+            n = _num(m.group(1))
             for i in range(1, min(n, total) + 1):
                 batch.append((i, "done", "自动"))
 
         # "步骤1-4标记完成" → 范围 done
-        m = _r.search(r'步骤\s*(\d+)\s*[-–—至到]\s*(\d+)\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', text)
+        m = _r.search(r'步骤\s*' + _NUM + r'\s*[-–—至到]\s*' + _NUM + r'\s*步?\s*(?:标记|已|全部|为)?\s*(?:完成|done)', combined)
         if m:
-            start, end = int(m.group(1)), int(m.group(2))
+            start, end = _num(m.group(1)), _num(m.group(2))
             for i in range(max(1, start), min(end, total) + 1):
                 batch.append((i, "done", "自动"))
 
-        # "步骤1、2、3已完成" / "步骤1，2，3标记完成" → 拆分为多个独立 done
-        for m in _r.finditer(r'(?:步骤)\s*(\d+(?:\s*[、,，]\s*\d+)+)\s*(?:标记为?|设置为?|已|为)?\s*(?:完成|done)', text):
-            nums = _r.findall(r'\d+', m.group(1))
-            for num in nums:
-                idx = int(num)
+        # "步骤1、2、3已完成"
+        _NUM_LIST = r'((?:' + _NUM + r'\s*[、,，]\s*)+' + _NUM + r')'
+        for m in _r.finditer(r'(?:步骤)\s*' + _NUM_LIST + r'\s*(?:标记为?|设置为?|已|为)?\s*(?:完成|done)', combined):
+            nums = _r.findall(_NUM, m.group(1))
+            for num_str in nums:
+                idx = _num(num_str)
                 if 1 <= idx <= total:
                     batch.append((idx, "done", "自动"))
 
         # "步骤X标记为完成" / "✅ 步骤1：... — 已完成"
-        for m in _r.finditer(r'(?:步骤|第)\s*(\d+).*?[-–—]\s*(?:已)?\s*(?:完成|done)', text):
-            idx = int(m.group(1))
+        for m in _r.finditer(r'(?:步骤|第)\s*' + _NUM + r'.*?[-–—]\s*(?:已)?\s*(?:完成|done)', combined):
+            idx = _num(m.group(1))
             if 1 <= idx <= total:
                 batch.append((idx, "done", "自动"))
 
-        # "步骤X进行中" / "步骤4：... — 进行中" / "步骤4进行中"
-        for m in _r.finditer(r'(?:步骤|第)\s*(\d+).*?[-–—]\s*(?:进行中|in.progress)', text, _r.IGNORECASE):
-            idx = int(m.group(1))
+        # "步骤X进行中"
+        for m in _r.finditer(r'(?:步骤|第)\s*' + _NUM + r'.*?[-–—]\s*(?:进行中|in.progress)', combined, _r.IGNORECASE):
+            idx = _num(m.group(1))
             if 1 <= idx <= total:
                 batch.append((idx, "in_progress", "自动"))
-        # 兜底：无分隔符的 "步骤X进行中"
-        for m in _r.finditer(r'(?:步骤|第)\s*(\d+)\s*步?\s*(?:标记为?|设置为?|为)?\s*(?:进行中|in.progress)', text, _r.IGNORECASE):
-            idx = int(m.group(1))
+        for m in _r.finditer(r'(?:步骤|第)\s*' + _NUM + r'\s*步?\s*(?:标记为?|设置为?|为)?\s*(?:进行中|in.progress)', combined, _r.IGNORECASE):
+            idx = _num(m.group(1))
             if 1 <= idx <= total:
                 batch.append((idx, "in_progress", "自动"))
 
@@ -355,14 +399,26 @@ def _auto_apply_sop_updates(session_id: str, text: str) -> None:
 
 
 def _attach_latest_sop(session: dict) -> dict:
-    """将当前 SOP 版本挂到最后一条助手消息，便于刷新后右侧原位恢复。"""
-    latest = sop_service.get_latest(session.get("session_id", ""))
-    if not latest:
+    """将首版 SOP 结构挂到最后一条助手消息。"""
+    state = sop_service.get_sop_state(session.get("session_id", ""))
+    if not state.get("exists"):
         return session
+    sop = {
+        "version": 1,
+        "sop_id": state.get("sop_id", ""),
+        "steps": [{
+            "title": s["title"],
+            "desc": s["desc"],
+            "step_status": s["status"],
+            "step_note": s["note"],
+        } for s in state["steps"]],
+        "current_step": state.get("current_step", 1),
+        "all_done": state.get("all_done", False),
+    }
     for msg in reversed(session.get("messages", [])):
         if msg.get("role") == "assistant":
-            msg["current_sop"] = latest
-            msg["sop_steps"] = latest.get("steps", [])
+            msg["current_sop"] = sop
+            msg["sop_steps"] = sop["steps"]
             break
     return session
 
@@ -391,8 +447,8 @@ async def chat_agent(req: ChatStreamRequest):
                         "role": "user",
                         "content": (
                             f"{sop_context}\n\n"
-                            "如果本轮是同一故障链路的追问，请在原 SOP 基础上补充或改写对应步骤，"
-                            "不要把它当成新的独立 SOP；只有设备、告警代码或根因明显变化时才重新组织。"
+                            "以上 SOP 步骤内容已冻结不可修改。本轮只需根据用户反馈更新对应步骤的状态，"
+                            "不要改动步骤标题和描述，不要追加新步骤。"
                         ),
                     })
                 for m in hist.messages[-6:]:
@@ -441,8 +497,9 @@ async def chat_agent(req: ChatStreamRequest):
                             yield f"data: {json.dumps({'type': 'text', 'content': text}, ensure_ascii=False)}\n\n"
 
             except Exception as e:
+                import traceback
                 err_msg = str(e)
-                logger.warning(f"Agent异常: {err_msg}")
+                logger.warning(f"Agent异常: {err_msg}\n{traceback.format_exc()}")
                 if full_answer and len(full_answer) > 50:
                     pass
                 elif "402" in err_msg or "Insufficient Balance" in err_msg:
@@ -458,34 +515,34 @@ async def chat_agent(req: ChatStreamRequest):
             if suggestions:
                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions[:3]}, ensure_ascii=False)}\n\n"
 
-            # 先创建/更新 SOP（save_version），再自动解析状态更新
-            sop_steps = _parse_sop_steps(full_answer)
-            if sop_steps:
-                try:
-                    sop_record = sop_service.save_version(
-                        req.session_id,
-                        req.user_id,
-                        req.question,
-                        sop_steps[:8],
-                        full_answer,
-                    )
-                    # 注入 Agent 通过 sop_manage 维护的步骤状态
-                    state = sop_service.get_sop_state(req.session_id)
-                    if state.get("exists"):
-                        sop_record["current_step"] = state.get("current_step", 1)
-                        sop_record["all_done"] = state.get("all_done", False)
-                        for i, s in enumerate(sop_record.get("steps", [])):
-                            if i < len(state.get("steps", [])):
-                                s["step_status"] = state["steps"][i].get("status", "pending")
-                                s["step_note"] = state["steps"][i].get("note", "")
-                except Exception as e:
-                    logger.warning(f"save_version 失败: {e}")
-                    sop_record = None
-            else:
-                sop_record = None
+            # 已有 SOP 时跳过步骤解析，永不重建
+            existing = sop_service.get_latest(req.session_id)
+            sop_record = None
+            if not (existing and existing.get("steps")):
+                sop_steps = _parse_sop_steps(full_answer)
+                if sop_steps:
+                    try:
+                        sop_record = sop_service.save_version(
+                            req.session_id,
+                            req.user_id,
+                            req.question,
+                            sop_steps[:8],
+                            full_answer,
+                        )
+                        state = sop_service.get_sop_state(req.session_id)
+                        if state.get("exists"):
+                            sop_record["current_step"] = state.get("current_step", 1)
+                            sop_record["all_done"] = state.get("all_done", False)
+                            for i, s in enumerate(sop_record.get("steps", [])):
+                                if i < len(state.get("steps", [])):
+                                    s["step_status"] = state["steps"][i].get("status", "pending")
+                                    s["step_note"] = state["steps"][i].get("note", "")
+                    except Exception as e:
+                        logger.warning(f"save_version 失败: {e}")
+                        sop_record = None
 
-            # 自动从 Agent 回复中解析 SOP 状态更新意图并执行（SOP 已存在时生效）
-            _auto_apply_sop_updates(req.session_id, full_answer)
+            # 自动从 Agent 回复中解析 SOP 状态更新意图并执行
+            _auto_apply_sop_updates(req.session_id, full_answer, req.question)
 
             # 推送最新状态 + sop_version
             try:

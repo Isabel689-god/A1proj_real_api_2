@@ -28,22 +28,6 @@
           <div class="embedded-uploader-trigger">
             <ImageUpload />
           </div>
-
-          <el-select
-            v-model="store.selectedDeviceModel"
-            placeholder="请选择适用手册"
-            size="small"
-            clearable
-            class="gemini-mini-select"
-            popper-class="gemini-select-popper"
-          >
-            <el-option
-              v-for="device in deviceOptions"
-              :key="device.value"
-              :label="device.label"
-              :value="device.value"
-            />
-          </el-select>
         </div>
 
         <div class="toolbar-right-group">
@@ -72,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useChatStore } from '../stores/chat';
 import { Loading, Close } from '@element-plus/icons-vue';
 import ImageUpload from './ImageUpload.vue';
@@ -81,49 +65,6 @@ import { ElMessage } from 'element-plus';
 const store = useChatStore();
 const textInput = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-
-// ==========================================
-// 动态设备列表逻辑 (保留你的原始后端对接逻辑)
-// ==========================================
-const deviceOptions = ref([
-  { label: '全部设备 (不推荐，回答可能不准确)', value: 'all' },
-]);
-
-const fetchDeviceList = async () => {
-  try {
-    const response = await fetch('/knowledge/manuals', {
-      headers: { 'X-Admin-Token': 'admin-change-me' }
-    });
-    if (!response.ok) throw new Error('获取列表失败');
-
-    const manuals = await response.json();
-
-    // 转换为下拉框格式
-    deviceOptions.value = [
-      { label: '全部设备 (不推荐，回答可能不准确)', value: 'all' },
-      ...manuals.map((m: any) => ({
-        label: m.filename,
-        value: m.filename
-      }))
-    ];
-
-    // 默认选择第一个手册（如果有）
-    if (manuals.length > 0) {
-      store.selectedDeviceModel = manuals[0].filename;
-    }
-  } catch (error) {
-    console.error('获取设备列表失败:', error);
-    // 失败时保留默认的"全部设备"选项
-  }
-};
-
-onMounted(() => {
-  fetchDeviceList();
-});
-
-// ==========================================
-// UI 交互与发送逻辑
-// ==========================================
 
 // 让文本框像 Gemini 一样根据输入内容自动撑开高度
 const adjustHeight = () => {

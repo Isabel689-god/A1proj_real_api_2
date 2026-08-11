@@ -27,6 +27,7 @@ class RecordCreate(BaseModel):
     repair_duration: str = ""
     fault_cause: str = ""
     fault_resolved: str = "是"
+    report_order_id: str = ""
 
 
 class RecordUpdate(BaseModel):
@@ -107,7 +108,11 @@ def list_records(
 
 @router.post("/records/{record_id}/sync")
 def sync_to_graph(record_id: str, action: str = "sync"):
-    """标记维修记录同步/取消同步到知识图谱"""
+    """标记维修记录同步/取消同步到知识图谱。
+
+    sync: 标记已同步 + 将记录加入动态知识库(待下次全量同步时索引到向量库)。
+    unsync: 仅取消标记。
+    """
     db = get_session()
     try:
         record = db.query(MaintenanceRecord).filter(
@@ -119,6 +124,35 @@ def sync_to_graph(record_id: str, action: str = "sync"):
             record.synced = "未同步"
         else:
             record.synced = "已同步"
+            # 同步时：将维修记录写入动态知识库，下次全量同步时索引到向量库
+            try:
+                from app.knowledge.dynamic_store import DynamicKnowledgeStore
+                store = DynamicKnowledgeStore()
+                store.add_case(
+                    title=f"{record.device_model or '未知设备'} | {record.fault_type or '未知故障'}",
+                    content=(
+                        f"设备型号：{record.device_model or '未知'}\n"
+                        f"故障类型：{record.fault_type or '未知'}\n"
+                        f"故障原因：{record.fault_cause or '未记录'}\n"
+                        f"故障描述：{record.description or '未记录'}\n"
+                        f"维修方案：{record.solution or '未记录'}\n"
+                        f"维修人员：{record.technician or '未记录'}\n"
+                        f"是否解决：{record.fault_resolved or '是'}"
+                    ),
+                    device_model=record.device_model or "",
+                    tags=[record.fault_type or "维修"],
+                    author="admin",
+                )
+                # 立即审核通过
+                cases = store.list_cases(status="pending")
+                for case in cases:
+                    if case.get("title") == f"{record.device_model or '未知设备'} | {record.fault_type or '未知故障'}":
+                        store.review_case(case["id"], approve=True, reviewer="system")
+                        break
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"维修记录写入动态知识库失败: {e}")
+
         db.commit()
         return {"success": True, "synced": record.synced}
     finally:
@@ -146,6 +180,7 @@ def create_record(req: RecordCreate, user_id: str = Query(...)):
             repair_duration=req.repair_duration,
             fault_cause=req.fault_cause,
             fault_resolved=req.fault_resolved,
+            report_order_id=req.report_order_id,
         )
         db.add(record)
         db.commit()
@@ -238,15 +273,69 @@ def export_records(user_id: str = Query("")):
         db.close()
 
 
+@router.get("/reports/sync")
+def get_synced_reports(user_id: str = Query(...)):
+    """获取用户持久化报告。"""
+    db = get_session()
+    try:
+        records = (
+            db.query(MaintenanceRecord)
+            .filter(
+                MaintenanceRecord.user_id == user_id,
+                MaintenanceRecord.report_data.isnot(None),
+            )
+            .order_by(MaintenanceRecord.created_at.desc())
+            .limit(200)
+            .all()
+        )
+        result = []
+        for r in records:
+            if r.report_data:
+                result.append(r.report_data)
+        return {"reports": result}
+    finally:
+        db.close()
+
+
+@router.post("/reports/sync")
+def save_report(req: dict, user_id: str = Query(...)):
+    """保存完整维修报告到 MySQL。"""
+    order_id = req.get("orderId", "")
+    if not order_id:
+        raise HTTPException(status_code=400, detail="缺少 orderId")
+
+    db = get_session()
+    try:
+        record = db.query(MaintenanceRecord).filter(
+            MaintenanceRecord.report_order_id == order_id
+        ).first()
+        if record:
+            record.report_data = req
+            record.report_submitted = 1 if req.get("submitStatus") == "已提交" else 0
+        else:
+            record = MaintenanceRecord(
+                record_id=f"mr:{uuid.uuid4().hex[:8]}",
+                user_id=user_id,
+                report_order_id=order_id,
+                report_data=req,
+                report_submitted=1 if req.get("submitStatus") == "已提交" else 0,
+                status="已提交" if req.get("submitStatus") == "已提交" else "已创建",
+            )
+            db.add(record)
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
 @router.post("/records/submit-report")
-def submit_report(req: dict):
+def submit_report(req: dict, user_id: str = Query("system")):
     """保存提报状态"""
     db = get_session()
     try:
         order_id = req.get("report_order_id", "")
         if not order_id:
             raise HTTPException(status_code=400, detail="缺少 report_order_id")
-        # 查找已有记录或创建新记录
         record = db.query(MaintenanceRecord).filter(
             MaintenanceRecord.report_order_id == order_id
         ).first()
@@ -256,7 +345,7 @@ def submit_report(req: dict):
         else:
             record = MaintenanceRecord(
                 record_id=f"mr:{uuid.uuid4().hex[:8]}",
-                user_id="system",
+                user_id=user_id,
                 report_order_id=order_id,
                 report_submitted=1,
             )

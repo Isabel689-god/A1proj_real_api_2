@@ -22,6 +22,7 @@ export default defineConfig({
       '/monitor': 'http://127.0.0.1:8000',
       '/animation': 'http://127.0.0.1:8000',
       '/maintenance': 'http://127.0.0.1:8000',
+      '/reports': 'http://127.0.0.1:8000',
     },
   },
 })

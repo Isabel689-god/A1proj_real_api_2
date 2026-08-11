@@ -121,7 +121,7 @@ const handleLogin = async () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        store.setUserLoggedIn(true, data.user.group, data.user.username, data.user.permissions);
+        store.setUserLoggedIn(true, data.user.group, data.user.username, data.user.permissions, data.token || '');
         ElMessage.success(`欢迎回来，${data.user.username}！正在载入工作台...`);
         const isAdmin = data.user.group === '管理人员' || data.user.group === '管理组';
         router.push(isAdmin ? '/admin' : '/chat');

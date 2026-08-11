@@ -1,50 +1,70 @@
 <template>
   <el-container class="admin-layout">
-    <el-aside width="240px" class="glass-card admin-sidebar">
-      <div class="sidebar-logo">
-        <el-icon :size="28"><DataAnalysis /></el-icon>
-        <h2>管理中枢</h2>
+    <el-aside :width="isCollapsed ? '64px' : '240px'" class="glass-card admin-sidebar" style="transition:width 0.3s;overflow:hidden">
+      <div class="sidebar-logo" :style="{justifyContent: isCollapsed ? 'center' : 'flex-start'}">
+        <el-icon :size="28" v-show="!isCollapsed"><DataAnalysis /></el-icon>
+        <h2 v-if="!isCollapsed">管理中枢</h2>
+        <el-button link style="color:var(--text-muted);padding:0" @click="isCollapsed = !isCollapsed">
+          <el-icon :size="20"><Fold v-if="!isCollapsed" /><Expand v-else /></el-icon>
+        </el-button>
       </div>
       <el-menu
         :default-active="activeMenu"
         class="admin-menu"
+        :collapse="isCollapsed"
         background-color="transparent"
         text-color="var(--text-secondary)"
         active-text-color="#83a5dd"
         @select="handleMenuSelect"
       >
-        <el-menu-item index="users">
-          <el-icon><User /></el-icon>
-          <span>账号与权限管理</span>
-        </el-menu-item>
-        <el-menu-item index="manuals">
-          <el-icon><Folder /></el-icon>
-          <span>手册文件管理</span>
-        </el-menu-item>
-        <el-menu-item index="case_library">
-          <el-icon><Collection /></el-icon>
-          <span>维修案例库</span>
-        </el-menu-item>
-        <el-menu-item index="records">
-          <el-icon><List /></el-icon>
-          <span>全局检修记录</span>
-        </el-menu-item>
-        <el-menu-item index="maintenance_records">
-          <el-icon><Document /></el-icon>
-          <span>维修记录与总结</span>
-        </el-menu-item>
-        <el-menu-item index="monitor">
-          <el-icon><Monitor /></el-icon>
-          <span>系统运维监控</span>
-        </el-menu-item>
-        <el-menu-item index="knowledge_mysql">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>知识图谱(MySQL)</span>
-        </el-menu-item>
-        <el-menu-item index="knowledge_neo4j">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>知识图谱(Neo4j)</span>
-        </el-menu-item>
+        <el-sub-menu index="group_auth">
+          <template #title>
+            <el-icon><Lock /></el-icon>
+            <span>账号权限</span>
+          </template>
+          <el-menu-item index="users">
+            <span>账号与权限管理</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="group_knowledge">
+          <template #title>
+            <el-icon><Folder /></el-icon>
+            <span>知识管理</span>
+          </template>
+          <el-menu-item index="manuals">
+            <span>手册文件管理</span>
+          </el-menu-item>
+          <el-menu-item index="knowledge_mysql">
+            <span>知识图谱</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="group_maintenance">
+          <template #title>
+            <el-icon><Document /></el-icon>
+            <span>维修管理</span>
+          </template>
+          <el-menu-item index="records">
+            <span>全局检修记录</span>
+          </el-menu-item>
+          <el-menu-item index="maintenance_records">
+            <span>维修总结</span>
+          </el-menu-item>
+          <el-menu-item index="case_library">
+            <span>维修案例库</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="group_ops">
+          <template #title>
+            <el-icon><Monitor /></el-icon>
+            <span>系统运维</span>
+          </template>
+          <el-menu-item index="monitor">
+            <span>系统运维监控</span>
+          </el-menu-item>
+        </el-sub-menu>
         <div style="flex:1"></div>
         <div style="padding: 10px;">
           <button class="theme-toggle" @click="toggleTheme">
@@ -75,8 +95,7 @@
           </div>
           <div class="card-list-container">
             <div v-for="(group, name) in permGroups" :key="name" class="glass-card data-card" style="padding:16px;margin-bottom:12px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div style="flex:1;">
+              <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
                     <strong style="font-size:15px;color:var(--text-primary);">{{ name }}</strong>
                     <el-tag size="small" type="info">{{ group.permissions?.length || 0 }} 项权限</el-tag>
@@ -116,19 +135,20 @@
                     </div>
                     <el-button v-else size="small" @click="startAddMember(name)" style="margin-top:4px;">+ 添加成员</el-button>
                   </div>
-                  <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                    <span style="font-size:12px;color:var(--text-muted);">组权限：</span>
-                    <el-tag v-for="p in group.permissions" :key="p" size="small" effect="plain">{{ getPermName(p) }}</el-tag>
+                  <div style="display:flex;align-items:center;gap:12px;margin-top:10px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                      <span style="font-size:12px;color:var(--text-muted);">组权限：</span>
+                      <el-tag v-for="p in group.permissions" :key="p" size="small" effect="plain">{{ getPermName(p) }}</el-tag>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-left:auto;">
+                      <el-button size="small" @click="openGroupDialog(name)">编辑</el-button>
+                      <el-popconfirm title="确定删除此权限组？" @confirm="deleteGroup(name)">
+                        <template #reference>
+                          <el-button size="small" type="danger">删除</el-button>
+                        </template>
+                      </el-popconfirm>
+                    </div>
                   </div>
-                </div>
-                <div style="display:flex;gap:8px;flex-shrink:0;">
-                  <el-button size="small" @click="openGroupDialog(name)">编辑</el-button>
-                  <el-popconfirm title="确定删除此权限组？" @confirm="deleteGroup(name)">
-                    <template #reference>
-                      <el-button size="small" type="danger" link>删除</el-button>
-                    </template>
-                  </el-popconfirm>
-                </div>
               </div>
             </div>
             <el-empty v-if="Object.keys(permGroups).length === 0" description="暂无权限组" />
@@ -182,46 +202,46 @@
               <el-button type="success" size="small" @click="syncAllManuals">全量同步知识库</el-button>
             </div>
           </div>
-          <div class="card-list-container" v-loading="loadingManuals">
-            <div v-for="item in filteredManualList" :key="item.filename" class="glass-card data-card">
-              <div class="card-info-group">
-                <div class="info-item col-filename">
-                  <span class="info-label">文件名</span>
-                  <span class="info-value text-ellipsis">{{ item.filename }}</span>
-                </div>
-                <div class="info-item col-type">
-                  <span class="info-label">类型</span>
-                  <el-tag :type="item.type === 'PDF' ? 'primary' : 'success'" size="small">{{ item.type }}</el-tag>
-                </div>
-                <div class="info-item col-category">
-                  <span class="info-label">分类</span>
-                  <el-tag size="small" effect="plain">{{ item.category || '未分类' }}</el-tag>
-                </div>
-                <div class="info-item col-size">
-                  <span class="info-label">大小</span>
-                  <span class="info-value">{{ formatKbSize(item.size_kb) }} KB</span>
-                </div>
-                <div class="info-item col-doc-count">
-                  <span class="info-label">切片文档数</span>
-                  <span class="info-value">{{ item.doc_count }}</span>
-                </div>
-                <div class="info-item col-status">
-                  <span class="info-label">同步状态</span>
-                  <el-tag :type="item.status === '已同步' ? 'success' : item.status === '同步中' ? 'info' : 'warning'" size="small">{{ item.status }}</el-tag>
-                </div>
-              </div>
-              <div class="card-actions">
-                <el-button size="small" type="primary" link @click="viewManual(item.filename, item.type === 'PDF')">查看</el-button>
-                <el-button size="small" type="primary" link @click="syncSingle(item.filename)">单独同步</el-button>
-                <el-popconfirm title="确定删除该手册文件吗？" @confirm="deleteManual(item.filename)">
+          <el-empty v-if="filteredManualList.length === 0 && !loadingManuals" description="暂无手册文件" />
+          <el-table v-else :data="filteredManualList" size="small" class="three-line-table" style="width:100%" v-loading="loadingManuals">
+            <el-table-column prop="filename" label="文件名" min-width="180" show-overflow-tooltip />
+            <el-table-column label="类型" width="70" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.type === 'PDF' ? 'primary' : 'success'" size="small">{{ row.type }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="分类" width="160" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ row.category || '未分类' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="80" align="right">
+              <template #default="{ row }">
+                {{ formatKbSize(row.size_kb) }}KB
+              </template>
+            </el-table-column>
+            <el-table-column label="切片" width="60" align="center">
+              <template #default="{ row }">
+                {{ row.doc_count }}
+              </template>
+            </el-table-column>
+            <el-table-column label="同步" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === '已同步' ? 'success' : row.status === '同步中' ? 'info' : 'warning'" size="small">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="220">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" link @click="viewManual(row.filename, row.type === 'PDF')">查看</el-button>
+                <el-button size="small" type="primary" link @click="syncSingle(row.filename)">同步</el-button>
+                <el-popconfirm title="确定删除该手册文件吗？" @confirm="deleteManual(row.filename)">
                   <template #reference>
                     <el-button size="small" type="danger" link>删除</el-button>
                   </template>
                 </el-popconfirm>
-              </div>
-            </div>
-            <el-empty v-if="filteredManualList.length === 0 && !loadingManuals" description="暂无手册文件" />
-          </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
 
@@ -236,42 +256,19 @@
               <el-button size="small" type="primary" @click="syncAllMaint" :loading="maintSyncAll">全量同步</el-button>
             </div>
           </div>
-          <div class="card-list-container" v-loading="loadingCases">
-            <div v-for="c in filteredCases" :key="c.record_id" class="glass-card data-card">
-              <div class="card-info-group">
-                <div class="info-item col-order-id">
-                  <span class="info-label">记录编号</span>
-                  <span class="info-value mono-text">{{ c.record_id?.slice(0,16) }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">故障类型</span>
-                  <span class="info-value">{{ c.fault_type?.slice(0,30) || '未知' }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">设备型号</span>
-                  <span class="info-value">{{ c.device_model?.slice(0,25) || '未指定' }}</span>
-                </div>
-                <div class="info-item col-round">
-                  <span class="info-label">维修人员</span>
-                  <span class="info-value">{{ c.technician || '未知' }}</span>
-                </div>
-                <div class="info-item col-status">
-                  <span class="info-label">同步</span>
-                  <el-tag :type="c.synced==='已同步'?'success':'info'" size="small">{{ c.synced || '未同步' }}</el-tag>
-                </div>
-              </div>
-              <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
-                原因：{{ c.fault_cause?.slice(0,80) || '无' }}
-              </div>
-              <div style="font-size:12px;color:var(--text-muted);">
-                方案：{{ c.solution?.slice(0,80) || '无' }}
-              </div>
-              <div class="card-actions">
-                <el-button type="primary" link size="small" @click="viewMaintDetail(c)">查看</el-button>
-              </div>
-            </div>
-            <el-empty v-if="filteredCases.length === 0 && !loadingCases" description="暂无维修记录" />
-          </div>
+          <el-empty v-if="filteredCases.length === 0 && !loadingCases" description="暂无已同步的维修案例" />
+          <el-table v-else :data="filteredCases" size="small" class="three-line-table" style="width:100%" v-loading="loadingCases">
+            <el-table-column prop="fault_type" label="故障类型" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="device_model" label="设备型号" min-width="110" show-overflow-tooltip />
+            <el-table-column prop="technician" label="维修人员" width="100" />
+            <el-table-column prop="fault_cause" label="故障原因" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="solution" label="维修方案" min-width="150" show-overflow-tooltip />
+            <el-table-column label="操作" width="80" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="viewMaintDetail(row)">查看</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
 
@@ -284,45 +281,35 @@
               <el-button size="small" @click="loadRecords">刷新记录</el-button>
             </div>
           </div>
-          <div class="card-list-container">
-            <div v-for="item in store.globalReports" :key="item.orderId" class="glass-card data-card">
-              <div class="card-info-group">
-                <div class="info-item col-order-id">
-                  <span class="info-label">维修记录编号</span>
-                  <span class="info-value">{{ item.orderId }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">开始时间</span>
-                  <span class="info-value">{{ item.dispatchTime }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">结束时间</span>
-                  <span class="info-value">{{ item.submitTime }}</span>
-                </div>
-                <div class="info-item col-round">
-                  <span class="info-label">交互轮数</span>
-                  <el-tag size="small">{{ item.messages?.length || 0 }} 轮交互</el-tag>
-                </div>
-              </div>
-              <div class="card-actions">
-                <el-button size="small" type="primary" link @click="viewDetails(item)">查看完整对话流</el-button>
-                <el-popconfirm title="确定永久删除这条记录吗？" @confirm="handleDelete(store.globalReports.indexOf(item))">
+          <el-empty v-if="store.globalReports.length === 0" description="暂无一线操作员提交工单" />
+          <el-table v-else :data="store.globalReports" size="small" class="three-line-table" style="width:100%">
+            <el-table-column prop="orderId" label="编号" width="160" show-overflow-tooltip />
+            <el-table-column prop="dispatchTime" label="开始时间" width="150" />
+            <el-table-column prop="submitTime" label="结束时间" width="150" />
+            <el-table-column label="轮数" width="70" align="center">
+              <template #default="{ row }">
+                {{ row.messages?.length || 0 }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200">
+              <template #default="{ row, $index }">
+                <el-button size="small" type="primary" link @click="viewDetails(row)">查看</el-button>
+                <el-popconfirm title="确定永久删除这条记录吗？" @confirm="handleDelete($index)">
                   <template #reference>
                     <el-button size="small" type="danger" link>删除</el-button>
                   </template>
                 </el-popconfirm>
-              </div>
-            </div>
-            <el-empty v-if="store.globalReports.length === 0" description="暂无一线操作员提交工单" />
-          </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
 
-      <!-- 维修记录与总结（管理端） -->
+      <!-- 维修总结（管理端） -->
       <div v-if="activeMenu === 'maintenance_records'" class="content-panel">
         <div class="glass-card inner-card records-card">
           <div class="panel-toolbar card-header">
-            <h4>维修记录与总结</h4>
+            <h4>维修总结</h4>
             <div class="toolbar-actions">
               <el-select v-model="maintUserFilter" placeholder="按人员筛选" clearable size="small" style="width:150px" @change="loadMaintRecords">
                 <el-option v-for="u in maintUserList" :key="u" :label="u" :value="u" />
@@ -348,7 +335,6 @@
                 <el-tag :type="row.synced==='已同步'?'success':'info'" size="small" effect="dark">{{ row.synced || '未同步' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="160" />
             <el-table-column label="操作" width="210" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="row.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(row)">同步</el-button>
@@ -405,10 +391,9 @@
             <div class="card-title">知识库统计</div>
             <div class="monitor-item"><span class="label">总文档数</span><span class="value highlight">{{ systemStatus.knowledge_base?.total_documents || 0 }}</span></div>
             <div class="monitor-item"><span class="label">手册文档</span><span class="value">{{ systemStatus.knowledge_base?.manual_documents || 0 }}</span></div>
-            <div class="monitor-item"><span class="label">PDF 原文件</span><span class="value">{{ systemStatus.knowledge_base?.pdf_files || 0 }}</span></div>
+            <div class="monitor-item"><span class="label">手册文件</span><span class="value">{{ systemStatus.knowledge_base?.physical_files || 0 }}</span></div>
             <div class="monitor-item"><span class="label">文档切片数</span><span class="value">{{ systemStatus.knowledge_base?.document_chunks || 0 }}</span></div>
             <div class="monitor-item"><span class="label">向量索引</span><el-tag :type="getVectorStatusType(systemStatus.knowledge_base?.vector_index?.status)" size="small">{{ systemStatus.knowledge_base?.vector_index?.label || '未知' }}</el-tag></div>
-            <div class="monitor-item"><span class="label">索引条目</span><span class="value">{{ systemStatus.knowledge_base?.vector_entries || 0 }}</span></div>
             <div class="monitor-item"><span class="label">更新时间</span><span class="value">{{ systemStatus.updated_at || '-' }}</span></div>
           </div>
           <div class="glass-card monitor-card">
@@ -448,14 +433,9 @@
         </div>
       </div>
 
-      <!-- 知识图谱(MySQL) -->
+      <!-- 知识图谱 -->
       <div v-if="activeMenu === 'knowledge_mysql'" class="content-panel" style="height:calc(100vh - 120px);">
         <KnowledgeGraph />
-      </div>
-
-      <!-- 知识图谱(Neo4j) -->
-      <div v-if="activeMenu === 'knowledge_neo4j'" class="content-panel" style="height:calc(100vh - 120px);">
-        <KnowledgeGraphNeo4j />
       </div>
     </el-main>
 
@@ -517,16 +497,16 @@ import { ref, reactive, computed, onMounted, inject, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { renderMarkdown } from '../utils/chatMarkdown';
-import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked } from '@element-plus/icons-vue';
+import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked, Fold, Expand, Document, Lock } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import KnowledgeGraph from '../components/KnowledgeGraph.vue';
-import KnowledgeGraphNeo4j from '../components/KnowledgeGraphNeo4j.vue';
 
 const router = useRouter();
 const store = useChatStore();
 const theme = inject<any>('theme');
 const toggleTheme = inject<() => void>('toggleTheme', () => {});
 const activeMenu = ref('users');
+const isCollapsed = ref(false);
 const showHistoryDialog = ref(false);
 const selectedChatHistory = ref<any[]>([]);
 const selectedOrder = ref('');
@@ -575,7 +555,9 @@ const loadMaintRecords = async () => {
     const res = await fetch(`${API_BASE}/maintenance/records?${params}`);
     if (res.ok) {
       const data = await res.json();
-      maintRecords.value = data.records || [];
+      maintRecords.value = (data.records || []).filter((r: any) =>
+        (r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim())
+      );
     }
   } catch { /* */ } finally { maintLoading.value = false; }
 };
@@ -841,7 +823,7 @@ const removeMember = async (group: string, username: string) => {
 const availablePerms = [
   { key: 'chat', label: '对话交互' },
   { key: 'view_graph', label: '查看图谱' },
-  { key: 'submit_report', label: '提报工单' },
+  { key: 'submit_report', label: '提交维修记录' },
   { key: 'request_upload', label: '申请上传' },
   { key: 'direct_upload', label: '直接上传' },
   { key: 'update_graph', label: '更新图谱' },
@@ -958,6 +940,14 @@ const lastGoodSystemStatus = ref<any>({});
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 const ADMIN_TOKEN = 'admin-change-me';
 
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = localStorage.getItem('a1proj_token');
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  headers['X-Admin-Token'] = ADMIN_TOKEN;
+  return headers;
+}
+
 const pageTitle = computed(() => {
   const map: Record<string, string> = {
     users: '组织架构与权限管控 (RBAC & Permission Groups)',
@@ -965,8 +955,7 @@ const pageTitle = computed(() => {
     case_library: '维修案例库 (Case Library)',
     records: '全局业务闭环审计 (Audit Logs)',
     monitor: '系统运维监控面板 (System Monitor)',
-    knowledge_mysql: '知识图谱 (MySQL)',
-    knowledge_neo4j: '知识图谱 (Neo4j)',
+    knowledge_mysql: '知识图谱',
   };
   return map[activeMenu.value] || '管理中枢';
 });
@@ -1291,7 +1280,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 25px 20px;
+  padding: 20px 12px;
   color: #00c8b4;
   border-bottom: 1px solid var(--border-glass);
 }
@@ -1317,6 +1306,14 @@ onMounted(() => {
   background: rgba(0, 200, 180, 0.12);
   border: 1px solid rgba(0, 200, 180, 0.2);
   color: #00c8b4 !important;
+}
+.menu-divider {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 16px 20px 6px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 .admin-main {
   padding: 15px 15px 15px 0;

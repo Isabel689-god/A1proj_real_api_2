@@ -89,45 +89,36 @@
           <div class="section-title">
             <span class="title-icon">📋</span>
             <span>我的维修记录</span>
-            <el-button size="small" type="primary" link style="margin-left:auto;" @click="showMaintenanceDrawer = true">🔧 维修记录与总结</el-button>
+            <el-button size="small" type="success" plain style="margin-left:8px;" @click="syncAllToCloud">☁️ 同步到云端</el-button>
+            <el-button size="small" type="primary" link style="margin-left:auto;" @click="showMaintenanceDrawer = true">🔧 维修总结</el-button>
           </div>
-          <div class="card-list-container">
-            <el-empty v-if="historyReports.length === 0" description="暂无提报数据" :image-size="80" class="dark-empty" />
-            <div v-for="item in historyReports" :key="item.orderId" class="glass-card data-card">
-              <div class="card-info-group">
-                <div class="info-item col-order-id">
-                  <span class="info-label">维修记录编号</span>
-                  <span class="info-value mono-text">{{ item.orderId }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">开始时间</span>
-                  <span class="info-value">{{ item.dispatchTime }}</span>
-                </div>
-                <div class="info-item col-time">
-                  <span class="info-label">结束时间</span>
-                  <span class="info-value">{{ item.submitTime }}</span>
-                </div>
-                <div class="info-item col-round">
-                  <span class="info-label">交互轮数</span>
-                  <el-tag size="small" effect="dark">{{ item.messages?.length || 0 }} 轮</el-tag>
-                </div>
-                <div class="info-item col-round">
-                  <span class="info-label">状态</span>
-                  <el-tag size="small" :type="item.maintenanceAdded ? 'success' : 'warning'" effect="dark">
-                    {{ item.maintenanceAdded ? '已加入' : (item.submitStatus || '已提交') }}
-                  </el-tag>
-                </div>
-              </div>
-              <div class="card-actions">
-                <el-button size="small" type="primary" link @click="viewHistoryChat(item)">
-                  查看完整对话流
-                </el-button>
-                <el-button size="small" type="warning" plain @click="saveToMaintenance(item)">
-                  📝 加入维修记录总结
-                </el-button>
-              </div>
-            </div>
-          </div>
+          <el-empty v-if="historyReports.length === 0" description="暂无提报数据" :image-size="80" class="dark-empty" />
+          <el-table v-else :data="historyReports" size="small" class="three-line-table" style="width:100%">
+            <el-table-column prop="orderId" label="编号" width="160" show-overflow-tooltip />
+            <el-table-column prop="dispatchTime" label="开始时间" width="140" />
+            <el-table-column prop="submitTime" label="结束时间" width="140" />
+            <el-table-column label="轮数" width="60" align="center">
+              <template #default="{ row }">
+                {{ row.messages?.length || 0 }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.maintenanceAdded ? 'success' : 'info'">{{ row.maintenanceAdded ? '已加入' : '未加入' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="280" align="right">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" link @click="viewHistoryChat(row)">查看</el-button>
+                <el-button size="small" type="warning" plain @click="saveToMaintenance(row)">📝 加入维修总结</el-button>
+                <el-popconfirm title="确定删除该记录吗？" @confirm="deleteReport(row)">
+                  <template #reference>
+                    <el-button size="small" type="danger" link>删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
 
         <template v-else>
@@ -179,20 +170,76 @@ const _prevReportLocked = ref(false);
 const apiBase3 = import.meta.env.VITE_API_BASE || '';
 
 // 从数据库加载哪些工单已加入维修记录 + 已提交
+const syncAllToCloud = async () => {
+  if (!store.globalReports.length) { ElMessage.info('没有可同步的记录'); return; }
+  let count = 0;
+  for (const rep of store.globalReports) {
+    try {
+      await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rep),
+      });
+      count++;
+    } catch {}
+  }
+  ElMessage.success(`已同步 ${count} 条记录到云端`);
+};
+
 const loadMaintenanceStatus = async () => {
+  // 从 MySQL 加载缺失的报告
+  try {
+    const repRes = await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`);
+    if (repRes.ok) {
+      const repData = await repRes.json();
+      const existingIds = new Set(store.globalReports.map((r: any) => r.orderId));
+      for (const rep of (repData.reports || [])) {
+        if (rep.orderId && !existingIds.has(rep.orderId)) {
+          store.globalReports.push(rep);
+        }
+      }
+      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+    }
+  } catch {}
+
+  // 自动同步：把 MySQL 中没有的报告上传
+  try {
+    const repRes = await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`);
+    if (repRes.ok) {
+      const remoteIds = new Set(((await repRes.json()).reports || []).map((r: any) => r.orderId));
+      for (const rep of store.globalReports) {
+        if (rep.orderId && !remoteIds.has(rep.orderId)) {
+          await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rep),
+          });
+        }
+      }
+    }
+  } catch {}
+
+  // 检查 maintenanceAdded 标记
   try {
     const res = await fetch(`${apiBase3}/maintenance/records?user_id=${encodeURIComponent(store.username)}&page_size=500`);
     if (res.ok) {
       const data = await res.json();
-      const addedIds = new Set((data.records || []).filter((r: any) => r.report_order_id).map((r: any) => r.report_order_id));
-      const submittedIds = new Set((data.records || []).filter((r: any) => r.report_submitted).map((r: any) => r.report_order_id));
+      const addedIds = new Set((data.records || [])
+        .filter((r: any) => r.report_order_id && (r.description || r.fault_type))
+        .map((r: any) => r.report_order_id));
       for (const item of store.globalReports) {
-        if (addedIds.has(item.orderId)) item.maintenanceAdded = true;
-        if (submittedIds.has(item.orderId)) item.reportSubmitted = true;
+        if (!item.maintenanceAdded && addedIds.has(item.orderId)) item.maintenanceAdded = true;
       }
       localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
     }
   } catch { /* */ }
+};
+
+const deleteReport = (item: any) => {
+  const idx = store.globalReports.findIndex((r: any) => r.orderId === item.orderId);
+  if (idx >= 0) {
+    store.globalReports.splice(idx, 1);
+    localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+  }
+  ElMessage.success('已删除');
 };
 
 const saveToMaintenance = async (item: any) => {
@@ -376,6 +423,7 @@ const handleLogout = () => {
 
 onMounted(() => {
   store.init();
+  loadMaintenanceStatus();
 });
 </script>
 
@@ -543,10 +591,9 @@ onMounted(() => {
 }
 
 .profile-avatar {
-  background: var(--theme-gradient);
+  background: var(--primary-color);
   color: var(--text-inverse);
   font-weight: 600;
-  box-shadow: var(--shadow-neon-sm);
 }
 
 .profile-meta {

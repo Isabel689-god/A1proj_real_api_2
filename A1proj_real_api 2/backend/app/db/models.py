@@ -5,7 +5,7 @@ import hashlib
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, DateTime, Float, Integer, String, Text,
+    Column, DateTime, Float, Integer, String, Text, JSON,
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import relationship
@@ -149,3 +149,27 @@ class MaintenanceRecord(Base):
     synced = Column(String(10), default="未同步")
     report_order_id = Column(String(128), default="")
     report_submitted = Column(Integer, default=0)  # 0=未提交, 1=已提交
+    report_data = Column(JSON, nullable=True)  # 完整报告数据
+
+
+class SopVersion(Base):
+    __tablename__ = "sys_sop_version"
+    __table_args__ = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(128), nullable=False, index=True)
+    user_id = Column(String(64), default="")
+    version = Column(Integer, default=1)
+    sop_id = Column(String(64), default="")
+    parent_sop_id = Column(String(64), default="")
+    question = Column(String(200), default="")
+    answer_preview = Column(String(400), default="")
+    steps = Column(Text, default="[]")       # JSON array
+    notes = Column(Text, default="[]")       # JSON array
+    issue_fingerprint = Column(String(256), default="")
+    fault_code = Column(String(32), default="")
+    device_model = Column(String(128), default="")
+    sop_status = Column(String(32), default="active")
+    classification = Column(Text, default="{}")  # JSON object
+    trace_id = Column(String(256), default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

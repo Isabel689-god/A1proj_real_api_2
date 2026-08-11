@@ -2,15 +2,15 @@
   <div class="repair-report cyber-card-3d">
     <div class="card-header">
       <div class="header-icon"></div>
-      <h4>检修业务标准化闭环报告</h4>
+      <h4>维修记录</h4>
     </div>
     <div class="card-body">
       <div class="info-row">
-        <span class="label">作业单号:</span>
+        <span class="label">维修记录编号:</span>
         <span class="value text-cyan">{{ orderId }}</span>
       </div>
       <div class="info-row">
-        <span class="label">派单时间:</span>
+        <span class="label">开始时间:</span>
         <span class="value">{{ dispatchTime }}</span>
       </div>
       <div class="info-row">
@@ -41,7 +41,7 @@
         :disabled="!isEnabled"
         @click="handleArchiveOrder"
       >
-        {{ isEnabled ? '提报经验并归档结单' : '需先完成SOP全流程' }}
+        {{ isEnabled ? '提交维修记录' : '需先完成SOP全流程' }}
       </el-button>
     </div>
   </div>
@@ -83,10 +83,10 @@ watch(() => props.orderId, async (id) => {
 
 const handleArchiveOrder = () => {
   ElMessageBox.confirm(
-    '确定完成本次设备检修，并将故障分析经验提报至知识库归档吗？',
+    '确定完成本次设备检修，并提交维修记录吗？',
     '归档结单确认',
     {
-      confirmButtonText: '确定归档',
+      confirmButtonText: '确定提交',
       cancelButtonText: '取消',
       type: 'warning',
     }

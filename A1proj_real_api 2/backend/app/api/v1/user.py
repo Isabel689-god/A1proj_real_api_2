@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.services.user_service import user_service
 from app.services.group_service import group_service
 from app.api.v1.knowledge import verify_admin
+from app.core.auth import create_token
 
 router = APIRouter(prefix="/user", tags=["用户管理"])
 
@@ -25,7 +26,22 @@ def login(req: LoginRequest):
     user = user_service.login(req.username, req.password)
     if not user:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    return {"success": True, "user": user}
+    is_admin = user.get("group") == "管理人员"
+    token = create_token(
+        user_id=user["username"],
+        group=user.get("group", ""),
+        permissions=user.get("permissions", []),
+        is_admin=is_admin,
+    )
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "username": user["username"],
+            "group": user.get("group", ""),
+            "permissions": user.get("permissions", []),
+        },
+    }
 
 @router.post("/logout")
 def logout(username: str = Body(..., embed=True)):

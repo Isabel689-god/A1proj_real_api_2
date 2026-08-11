@@ -10,7 +10,7 @@
   >
     <div class="drawer-inner">
       <div class="drawer-header">
-        <h3 class="drawer-title">🔧 维修记录与总结</h3>
+        <h3 class="drawer-title">🔧 维修总结</h3>
         <el-button type="primary" size="small" @click="openCreate">+ 新增记录</el-button>
       </div>
 
@@ -181,7 +181,9 @@ async function fetchRecords() {
   try {
     const res = await fetch(`${API_BASE}/maintenance/records?user_id=${encodeURIComponent(store.username)}&page=${page.value}&page_size=${pageSize.value}`)
     const data = await res.json()
-    records.value = data.records || []
+    records.value = (data.records || []).filter((r: any) =>
+      (r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim())
+    );
     total.value = data.total || 0
   } catch {
     ElMessage.error('加载记录失败')
