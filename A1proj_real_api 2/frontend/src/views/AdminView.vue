@@ -65,6 +65,16 @@
             <span>系统运维监控</span>
           </el-menu-item>
         </el-sub-menu>
+
+        <el-sub-menu index="model_config">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>模型配置</span>
+          </template>
+          <el-menu-item index="model_chat"><span>对话模型</span></el-menu-item>
+          <el-menu-item index="model_vision"><span>视觉模型</span></el-menu-item>
+          <el-menu-item index="model_embedding"><span>Embedding 模型</span></el-menu-item>
+        </el-sub-menu>
         <div style="flex:1"></div>
         <div style="padding: 10px;">
           <button class="theme-toggle" @click="toggleTheme">
@@ -263,9 +273,15 @@
             <el-table-column prop="technician" label="维修人员" width="100" />
             <el-table-column prop="fault_cause" label="故障原因" min-width="150" show-overflow-tooltip />
             <el-table-column prop="solution" label="维修方案" min-width="150" show-overflow-tooltip />
-            <el-table-column label="操作" width="80" align="center">
+            <el-table-column label="操作" width="160" align="center">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="viewMaintDetail(row)">查看</el-button>
+                <el-button type="warning" link size="small" @click="unsyncCase(row)">取消同步</el-button>
+                <el-popconfirm title="确定从案例库删除此条？" @confirm="deleteCase(row)">
+                  <template #reference>
+                    <el-button type="danger" link size="small">删除</el-button>
+                  </template>
+                </el-popconfirm>
               </template>
             </el-table-column>
           </el-table>
@@ -434,6 +450,70 @@
       </div>
 
       <!-- 知识图谱 -->
+      <div v-if="activeMenu === 'model_chat'" class="content-panel">
+        <div class="card-title">📡 对话模型配置</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
+            <el-input v-model="chatForm.provider" size="small" style="width:420px" placeholder="deepseek" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
+            <el-input v-model="chatForm.model" size="small" style="width:420px" placeholder="deepseek-chat" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
+            <el-input v-model="chatForm.base_url" size="small" style="width:420px" placeholder="https://api.deepseek.com/v1" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
+            <el-input v-model="chatForm.api_key" size="small" style="width:420px" />
+            <el-button size="small" type="primary" @click="saveChatModel" :loading="modelSaving">保存</el-button>
+          </div>
+          <el-tag v-if="modelSaveMsg" :type="modelSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ modelSaveMsg }}</el-tag>
+        </div>
+      </div>
+
+      <div v-if="activeMenu === 'model_vision'" class="content-panel">
+        <div class="card-title">👁️ 视觉模型配置</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
+            <el-input v-model="visionForm.model" size="small" style="width:420px" placeholder="qwen-vl-plus" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
+            <el-input v-model="visionForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
+            <el-input v-model="visionForm.api_key" size="small" style="width:420px" />
+            <el-button size="small" type="primary" @click="saveVisionModel" :loading="visionSaving">保存</el-button>
+          </div>
+          <el-tag v-if="visionSaveMsg" :type="visionSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ visionSaveMsg }}</el-tag>
+        </div>
+      </div>
+
+      <div v-if="activeMenu === 'model_embedding'" class="content-panel">
+        <div class="card-title">🔢 Embedding 模型配置</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
+            <el-input v-model="embeddingForm.model" size="small" style="width:420px" placeholder="text-embedding-v3" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
+            <el-input v-model="embeddingForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
+            <el-input v-model="embeddingForm.api_key" size="small" style="width:420px" />
+            <el-button size="small" type="primary" @click="saveEmbeddingModel" :loading="embeddingSaving">保存</el-button>
+          </div>
+          <el-tag v-if="embeddingSaveMsg" :type="embeddingSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ embeddingSaveMsg }}</el-tag>
+        </div>
+      </div>
+
       <div v-if="activeMenu === 'knowledge_mysql'" class="content-panel" style="height:calc(100vh - 120px);">
         <KnowledgeGraph />
       </div>
@@ -497,15 +577,142 @@ import { ref, reactive, computed, onMounted, inject, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatStore } from '../stores/chat';
 import { renderMarkdown } from '../utils/chatMarkdown';
-import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked, Fold, Expand, Document, Lock } from '@element-plus/icons-vue';
+import { DataAnalysis, List, SwitchButton, Folder, Monitor, User, DocumentChecked, Fold, Expand, Document, Lock, Setting } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import KnowledgeGraph from '../components/KnowledgeGraph.vue';
 
 const router = useRouter();
 const store = useChatStore();
+const modelConfig = ref<any>(null);
+const modelCfgLoading = ref(false);
+const modelSaving = ref(false);
+const modelSaveMsg = ref('');
+const modelSaveOk = ref(false);
+const chatForm = reactive({ provider: '', model: '', base_url: '', api_key: '' });
+
+const selectedVisionModel = ref('');
+const visionSaving = ref(false);
+const visionSaveMsg = ref('');
+const visionSaveOk = ref(false);
+const visionForm = reactive({ model: '', base_url: '', api_key: '' });
+
+const selectedEmbeddingModel = ref('');
+const embeddingSaving = ref(false);
+const embeddingSaveMsg = ref('');
+const embeddingSaveOk = ref(false);
+const embeddingForm = reactive({ model: '', base_url: '', api_key: '' });
+
+const saveChatModel = async () => {
+  const f = chatForm;
+  if (!f.model) return;
+  modelSaving.value = true;
+  modelSaveMsg.value = '';
+  try {
+    const body: any = { type: 'chat', provider: f.provider, model: f.model, base_url: f.base_url };
+    if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
+    const res = await fetch(`${API_BASE}/monitor/model-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      modelSaveOk.value = true;
+      modelSaveMsg.value = `已保存: ${f.model}`;
+      modelConfig.value = { ...modelConfig.value, chat: data.chat };
+    } else {
+      modelSaveOk.value = false;
+      modelSaveMsg.value = data.detail || '保存失败';
+    }
+  } catch {
+    modelSaveOk.value = false;
+    modelSaveMsg.value = '请求失败';
+  } finally { modelSaving.value = false; }
+};
+
+const saveVisionModel = async () => {
+  const f = visionForm;
+  if (!f.model) return;
+  visionSaving.value = true;
+  visionSaveMsg.value = '';
+  try {
+    const body: any = { type: 'vision', model: f.model, base_url: f.base_url };
+    if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
+    const res = await fetch(`${API_BASE}/monitor/model-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      visionSaveOk.value = true;
+      visionSaveMsg.value = `已保存: ${f.model}`;
+      modelConfig.value = { ...modelConfig.value, vision: data.vision };
+    } else {
+      visionSaveOk.value = false;
+      visionSaveMsg.value = data.detail || '保存失败';
+    }
+  } catch {
+    visionSaveOk.value = false;
+    visionSaveMsg.value = '请求失败';
+  } finally { visionSaving.value = false; }
+};
+
+const saveEmbeddingModel = async () => {
+  const f = embeddingForm;
+  if (!f.model) return;
+  embeddingSaving.value = true;
+  embeddingSaveMsg.value = '';
+  try {
+    const body: any = { type: 'embedding', model: f.model, base_url: f.base_url };
+    if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
+    const res = await fetch(`${API_BASE}/monitor/model-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      embeddingSaveOk.value = true;
+      embeddingSaveMsg.value = `已保存: ${f.model}`;
+      modelConfig.value = { ...modelConfig.value, embedding: data.embedding };
+    } else {
+      embeddingSaveOk.value = false;
+      embeddingSaveMsg.value = data.detail || '保存失败';
+    }
+  } catch {
+    embeddingSaveOk.value = false;
+    embeddingSaveMsg.value = '请求失败';
+  } finally { embeddingSaving.value = false; }
+};
+const loadModelConfig = async () => {
+  modelCfgLoading.value = true;
+  try {
+    const r = await fetch(`${API_BASE}/monitor/model-config`, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+    if (r.ok) {
+      modelConfig.value = await r.json();
+      const c = modelConfig.value?.chat;
+      const v = modelConfig.value?.vision;
+      const e = modelConfig.value?.embedding;
+      chatForm.provider = c?.provider || '';
+      chatForm.model = c?.model || '';
+      chatForm.base_url = c?.base_url || '';
+      visionForm.model = v?.model || '';
+      visionForm.base_url = v?.base_url || '';
+      embeddingForm.model = e?.model || '';
+      embeddingForm.base_url = e?.base_url || '';
+      // API Key 脱敏提示
+      chatForm.api_key = c?.key_hint || '';
+      visionForm.api_key = v?.key_hint || '';
+      embeddingForm.api_key = e?.key_hint || '';
+    }
+  } catch {} finally { modelCfgLoading.value = false; }
+};
+
 const theme = inject<any>('theme');
 const toggleTheme = inject<() => void>('toggleTheme', () => {});
 const activeMenu = ref('users');
+watch(activeMenu, v => { if (v.startsWith('model_')) loadModelConfig(); });
 const isCollapsed = ref(false);
 const showHistoryDialog = ref(false);
 const selectedChatHistory = ref<any[]>([]);
@@ -655,7 +862,10 @@ const syncAllMaint = async () => {
     const res = await fetch(`${API_BASE}/maintenance/records?page_size=500`);
     if (!res.ok) throw new Error('加载失败');
     const data = await res.json();
-    const unsynced = (data.records || []).filter((r: any) => r.synced !== '已同步');
+    const unsynced = (data.records || []).filter((r: any) =>
+      r.synced !== '已同步' &&
+      ((r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim()))
+    );
     if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); maintSyncAll.value = false; return; }
     let ok = 0;
     for (const row of unsynced) {
@@ -956,6 +1166,10 @@ const pageTitle = computed(() => {
     records: '全局业务闭环审计 (Audit Logs)',
     monitor: '系统运维监控面板 (System Monitor)',
     knowledge_mysql: '知识图谱',
+    maintenance_records: '维修总结',
+    model_chat: '模型配置 — 对话模型',
+    model_vision: '模型配置 — 视觉模型',
+    model_embedding: '模型配置 — Embedding 模型',
   };
   return map[activeMenu.value] || '管理中枢';
 });
@@ -999,10 +1213,29 @@ const loadCaseLibrary = async () => {
     const res = await fetch(`${API_BASE}/maintenance/records?page_size=500`);
     if (res.ok) {
       const data = await res.json();
-      cases.value = (data.records || []).filter((r: any) => r.synced === '已同步');
+      cases.value = (data.records || []).filter((r: any) =>
+        r.synced === '已同步' &&
+        ((r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim()))
+      );
     }
   } catch { /* */ }
   loadingCases.value = false;
+};
+
+const unsyncCase = async (row: any) => {
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/sync?action=unsync`, { method: 'POST' });
+    if (res.ok) { ElMessage.success('已取消同步'); loadCaseLibrary(); }
+    else { ElMessage.error('操作失败'); }
+  } catch { ElMessage.error('请求失败'); }
+};
+
+const deleteCase = async (row: any) => {
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}`, { method: 'DELETE' });
+    if (res.ok) { ElMessage.success('已删除'); loadCaseLibrary(); }
+    else { ElMessage.error('删除失败'); }
+  } catch { ElMessage.error('请求失败'); }
 };
 
 // ==================== 工单审计 ====================
@@ -1606,6 +1839,61 @@ onMounted(() => {
   font-size: 18px;
   font-weight: bold;
   color: #60a5fa;
+}
+/* ── 模型配置卡片 ── */
+.model-cards {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.model-info-card,
+.model-switch-card {
+  flex: 1;
+  min-width: 320px;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  overflow: hidden;
+}
+.model-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-glass);
+  background: var(--bg-card);
+}
+.model-icon { font-size: 20px; }
+.model-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.model-card-body {
+  padding: 18px;
+}
+.mc-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+}
+.mc-label {
+  width: 80px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.mc-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.mc-highlight {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--primary-color);
 }
 .test-result {
   background: var(--bg-card);

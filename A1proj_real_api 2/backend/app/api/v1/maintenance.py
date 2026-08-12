@@ -1,11 +1,12 @@
 """维修记录 CRUD + CSV 导出 API"""
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import uuid
 import io
 import csv
+import threading
 from datetime import datetime
 
 from app.db import get_session, MaintenanceRecord
@@ -160,7 +161,7 @@ def sync_to_graph(record_id: str, action: str = "sync"):
 
 
 @router.post("/records")
-def create_record(req: RecordCreate, user_id: str = Query(...)):
+def create_record(req: RecordCreate, user_id: str = Query(...), background_tasks: BackgroundTasks = BackgroundTasks()):
     """新增维修记录"""
     db = get_session()
     try:
@@ -185,13 +186,15 @@ def create_record(req: RecordCreate, user_id: str = Query(...)):
         db.add(record)
         db.commit()
         db.refresh(record)
+        # 后台自动同步到案例库
+        background_tasks.add_task(_auto_sync_by_id, record.record_id)
         return {"success": True, "record": _row_to_dict(record)}
     finally:
         db.close()
 
 
 @router.put("/records/{record_id}")
-def update_record(record_id: str, req: RecordUpdate, user_id: str = Query("")):
+def update_record(record_id: str, req: RecordUpdate, user_id: str = Query(""), background_tasks: BackgroundTasks = BackgroundTasks()):
     """修改维修记录（不传 user_id 时管理员可修改任意记录）"""
     db = get_session()
     try:
@@ -205,6 +208,8 @@ def update_record(record_id: str, req: RecordUpdate, user_id: str = Query("")):
             setattr(record, field, value)
         db.commit()
         db.refresh(record)
+        # 后台自动同步到案例库
+        background_tasks.add_task(_auto_sync_by_id, record.record_id)
         return {"success": True, "record": _row_to_dict(record)}
     finally:
         db.close()
@@ -368,3 +373,23 @@ def check_submitted(order_id: str):
         return {"submitted": record is not None}
     finally:
         db.close()
+
+
+def _auto_sync_by_id(record_id: str):
+    """后台任务：按 ID 查询记录并自动同步。"""
+    try:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"auto_sync 后台任务启动: {record_id}")
+        db = get_session()
+        record = db.query(MaintenanceRecord).filter(MaintenanceRecord.record_id == record_id).first()
+        db.close()
+        if record:
+            from app.services.auto_sync import auto_sync_to_case_library
+            auto_sync_to_case_library(record)
+            logger.info(f"auto_sync 后台任务完成: {record_id}")
+        else:
+            logger.warning(f"auto_sync 未找到记录: {record_id}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"auto_sync 后台任务异常: {e}")

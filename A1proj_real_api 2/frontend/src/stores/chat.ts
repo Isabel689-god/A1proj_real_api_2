@@ -52,7 +52,7 @@ export const useChatStore = defineStore('chat', {
       // 从后端 MySQL 同步会话列表
       try {
         const API_BASE = import.meta.env.VITE_API_BASE || '';
-        const res = await fetch(`${API_BASE}/chat/sessions?user_id=${encodeURIComponent(this.username || 'user_001')}`);
+        const res = await fetch(`${API_BASE}/chat/sessions?user_id=${encodeURIComponent(this.username || 'user_001')}`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           const remoteMap = new Map<string, any>();
@@ -132,7 +132,7 @@ export const useChatStore = defineStore('chat', {
       if (session && (!session.messages || session.messages.length === 0)) {
         try {
           const API_BASE = import.meta.env.VITE_API_BASE || '';
-          const res = await fetch(`${API_BASE}/chat/sessions/${encodeURIComponent(id)}?user_id=${encodeURIComponent(this.username || 'user_001')}`);
+          const res = await fetch(`${API_BASE}/chat/sessions/${encodeURIComponent(id)}?user_id=${encodeURIComponent(this.username || 'user_001')}`, { credentials: 'include' });
           if (res.ok) {
             const data = await res.json();
             const msgs = data.session?.messages || [];
@@ -172,7 +172,7 @@ export const useChatStore = defineStore('chat', {
     async deleteSession(sessionId: string) {
       // 调后端删除
       try {
-        await fetch(`${import.meta.env.VITE_API_BASE || ''}/chat/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(this.username || 'user_001')}`, { method: 'DELETE' });
+        await fetch(`${import.meta.env.VITE_API_BASE || ''}/chat/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(this.username || 'user_001')}`, { method: 'DELETE', credentials: 'include' });
       } catch { /* ignore */ }
       // 前端移除
       const idx = this.sessions.findIndex(s => s.id === sessionId);
@@ -343,15 +343,13 @@ export const useChatStore = defineStore('chat', {
       this.permissions = permissions;
       if (status) {
         localStorage.setItem(AUTH_KEY, JSON.stringify({ username, group, permissions }));
-        if (token) localStorage.setItem('a1proj_token', token);
       } else {
         localStorage.removeItem(AUTH_KEY);
-        localStorage.removeItem('a1proj_token');
       }
     },
 
     getAuthToken(): string {
-      return localStorage.getItem('a1proj_token') || '';
+      return '';
     },
 
     submitReport(report: any) {
@@ -370,6 +368,7 @@ export const useChatStore = defineStore('chat', {
            await fetch(`${API_BASE}/user/logout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username: this.username })
             });
          } catch(e) {}

@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
-from app.core.config import get_settings
+from app.core.config import get_settings, _find_env
 from app.core.llm_provider import test_llm_connection as run_llm_connection_test
 from app.db import get_session
 from app.knowledge.sync_service import KnowledgeSyncService
@@ -179,8 +179,6 @@ def get_system_status(_=Depends(verify_admin)):
         },
         "services": {
             "llm_configured": llm_configured,
-            "llm_provider": settings.LLM_PROVIDER,
-            "llm_model": settings.LLM_MODEL,
             "embedding_configured": embedding_configured,
             "embedding_model": settings.EMBEDDING_MODEL,
             "database": database_status,
@@ -212,3 +210,107 @@ def get_system_status(_=Depends(verify_admin)):
 def test_llm_connection(_=Depends(verify_admin)):
     """实际发送一条极简请求测试大模型是否可用"""
     return run_llm_connection_test()
+
+
+@router.get("/model-config")
+def get_model_config(_=Depends(verify_admin)):
+    """获取当前模型配置。"""
+    s = get_settings()
+    def _hint(key_val: str) -> str:
+        if not key_val: return ""
+        return key_val[:5] + "***" + key_val[-3:] if len(key_val) > 8 else "***"
+    return {
+        "chat": {
+            "provider": s.LLM_PROVIDER,
+            "model": s.LLM_MODEL,
+            "base_url": getattr(s, 'LLM_BASE_URL', ''),
+            "has_key": bool(s.api_key),
+            "key_hint": _hint(s.api_key),
+        },
+        "vision": {
+            "model": s.VISION_MODEL,
+            "base_url": getattr(s, 'VISION_BASE_URL', ''),
+            "has_key": bool(s.vision_api_key),
+            "key_hint": _hint(s.vision_api_key),
+        },
+        "embedding": {
+            "model": s.EMBEDDING_MODEL,
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "has_key": bool(getattr(s, 'VISION_API_KEY', '') or s.api_key),
+            "key_hint": _hint(getattr(s, 'VISION_API_KEY', '') or s.api_key),
+        }
+    }
+
+
+@router.put("/model-config")
+def update_model_config(payload: dict, _=Depends(verify_admin)):
+    """更新模型配置。type: 'chat'（对话模型）或 'vision'（视觉模型）。"""
+    model_type = (payload.get("type") or "chat").strip()
+    model = (payload.get("model") or "").strip()
+
+    if model_type == "vision":
+        return _update_vision_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
+    if model_type == "embedding":
+        return _update_embedding_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
+    return _update_chat_model(model, provider=payload.get("provider", ""), base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
+
+
+def _update_chat_model(model: str, provider: str = "", base_url: str = "", api_key: str = ""):
+    kv = {"LLM_MODEL": model}
+    if provider: kv["LLM_PROVIDER"] = provider
+    if base_url: kv["LLM_BASE_URL"] = base_url
+    if api_key: kv["LLM_API_KEY"] = api_key
+    _write_env(kv)
+
+    get_settings.cache_clear()
+    s = get_settings()
+    return {
+        "success": True,
+        "chat": {"provider": s.LLM_PROVIDER, "model": s.LLM_MODEL,
+                 "base_url": getattr(s, 'LLM_BASE_URL', ''), "has_key": bool(s.api_key)},
+    }
+
+
+def _update_vision_model(model: str, base_url: str = "", api_key: str = ""):
+    kv = {"VISION_MODEL": model}
+    if base_url: kv["VISION_BASE_URL"] = base_url
+    if api_key: kv["VISION_API_KEY"] = api_key
+    _write_env(kv)
+
+    get_settings.cache_clear()
+    s = get_settings()
+    return {
+        "success": True,
+        "vision": {"model": s.VISION_MODEL,
+                   "base_url": getattr(s, 'VISION_BASE_URL', ''), "has_key": bool(s.vision_api_key)},
+    }
+
+
+def _update_embedding_model(model: str, base_url: str = "", api_key: str = ""):
+    kv = {"EMBEDDING_MODEL": model}
+    if api_key: kv["VISION_API_KEY"] = api_key
+    _write_env(kv)
+
+    get_settings.cache_clear()
+    s = get_settings()
+    return {
+        "success": True,
+        "embedding": {"model": s.EMBEDDING_MODEL,
+                      "has_key": bool(getattr(s, 'VISION_API_KEY', '') or s.api_key)},
+    }
+
+
+def _write_env(kv: dict):
+    """更新 .env 中的键值对。"""
+    env_path = _find_env()
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    for key, value in kv.items():
+        found = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{key}=") or line.startswith(f"# {key}="):
+                lines[i] = f"{key}={value}"
+                found = True
+                break
+        if not found:
+            lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -26,8 +26,6 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
 function getHeaders(isFormData = false): Record<string, string> {
   const headers: Record<string, string> = {};
-  const token = localStorage.getItem('a1proj_token');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
   if (!isFormData) headers['Content-Type'] = 'application/json';
   return headers;
 }
@@ -73,13 +71,15 @@ export async function* sendChatMessageStream(
       response = await fetch(`${API_BASE}/chat/stream/multipart`, {
         method: 'POST',
         headers: getHeaders(true),
-        body: formData
+        body: formData,
+        credentials: 'include',
       });
     } else {
       // 纯文本使用JSON接口
       response = await fetch(`${API_BASE}/chat/agent`, {
         method: 'POST',
         headers: getHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           user_id: username || 'user_001',
           session_id: sessionId,

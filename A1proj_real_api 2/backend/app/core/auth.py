@@ -73,11 +73,15 @@ async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict[str, Any]:
-    """从请求头提取并验证 JWT，返回 payload。"""
-    # 先尝试 Authorization header
+    """从请求头或 cookie 提取并验证 JWT，返回 payload。"""
+    # 1. Authorization header
     if credentials:
         return decode_token(credentials.credentials)
-    # 再尝试 query param（WebSocket 等场景）
+    # 2. Cookie
+    cookie_token = request.cookies.get("a1proj_token")
+    if cookie_token:
+        return decode_token(cookie_token)
+    # 3. Query param（WebSocket 等场景）
     token = request.query_params.get("token")
     if token:
         return decode_token(token)
@@ -85,11 +89,21 @@ async def get_current_user(
 
 
 def verify_admin(request: Request) -> dict[str, Any]:
-    """管理员鉴权：优先 JWT，回退 X-Admin-Token。"""
-    # 先尝试 JWT
+    """管理员鉴权：优先 JWT (header/cookie/query)，回退 X-Admin-Token。"""
+    token = None
+    # 1. Authorization header
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        payload = decode_token(auth_header[7:])
+        token = auth_header[7:]
+    # 2. Cookie
+    if not token:
+        token = request.cookies.get("a1proj_token")
+    # 3. Query param
+    if not token:
+        token = request.query_params.get("token")
+
+    if token:
+        payload = decode_token(token)
         if payload.get("is_admin"):
             return payload
         raise HTTPException(status_code=403, detail="需要管理员权限")

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -33,7 +34,7 @@ def login(req: LoginRequest):
         permissions=user.get("permissions", []),
         is_admin=is_admin,
     )
-    return {
+    resp = JSONResponse({
         "success": True,
         "token": token,
         "user": {
@@ -41,12 +42,24 @@ def login(req: LoginRequest):
             "group": user.get("group", ""),
             "permissions": user.get("permissions", []),
         },
-    }
+    })
+    resp.set_cookie(
+        key="a1proj_token",
+        value=token,
+        httponly=True,
+        secure=False,       # 本地开发用 http，生产环境改 True
+        samesite="lax",
+        max_age=86400 if not is_admin else 43200,  # 24h / 12h
+        path="/",
+    )
+    return resp
 
 @router.post("/logout")
 def logout(username: str = Body(..., embed=True)):
     user_service.logout(username)
-    return {"success": True}
+    resp = JSONResponse({"success": True})
+    resp.delete_cookie("a1proj_token", path="/")
+    return resp
 
 @router.get("/list", dependencies=[Depends(verify_admin)])
 def list_users():

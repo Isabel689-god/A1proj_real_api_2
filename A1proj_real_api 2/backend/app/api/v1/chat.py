@@ -14,6 +14,7 @@ from app.services.session_service import session_service
 from app.services.sop_service import sop_service
 from app.agent.cnc_agent import create_cnc_agent
 from app.schemas.chat import ChatStreamRequest
+from app.vision.vision_service import VisionService
 
 router = APIRouter(prefix="/chat", tags=["智能对话"])
 logger = logging.getLogger(__name__)
@@ -459,6 +460,19 @@ async def chat_agent(req: ChatStreamRequest):
                     role = "assistant" if m.type == "ai" else "user"
                     messages.append({"role": role, "content": content})
                 messages.append({"role": "user", "content": input_text})
+
+                # 如果有图片，先用视觉模型识别为文字，再注入到消息中
+                if req.image_url:
+                    try:
+                        vision = VisionService()
+                        result = vision.analyze_image_url(req.image_url)
+                        desc = result.get("description", "")
+                        if desc:
+                            last_msg = messages[-1]
+                            text = last_msg["content"]
+                            last_msg["content"] = f"[图片识别结果]\n{desc}\n\n[用户问题]\n{text}"
+                    except Exception as ve:
+                        logger.warning(f"视觉识别失败: {ve}")
 
                 token_usage = {"prompt": 0, "completion": 0, "total": 0}
 

@@ -33,6 +33,13 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="同步" width="75">
+            <template #default="{ row }">
+              <el-tag :type="row.synced === '已同步' ? 'success' : 'info'" size="small" effect="dark">
+                {{ row.synced || '未同步' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" link size="small" @click="openView(row)">查看</el-button>
@@ -179,7 +186,7 @@ function resetForm() {
 async function fetchRecords() {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/maintenance/records?user_id=${encodeURIComponent(store.username)}&page=${page.value}&page_size=${pageSize.value}`)
+    const res = await fetch(`${API_BASE}/maintenance/records?user_id=${encodeURIComponent(store.username)}&page=${page.value}&page_size=${pageSize.value}`, { credentials: 'include' })
     const data = await res.json()
     records.value = (data.records || []).filter((r: any) =>
       (r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim())
@@ -233,6 +240,7 @@ async function handleSubmit() {
       const res = await fetch(`${API_BASE}/maintenance/records?user_id=${encodeURIComponent(store.username)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body),
       })
       const data = await res.json()
@@ -247,6 +255,7 @@ async function handleSubmit() {
       const res = await fetch(`${API_BASE}/maintenance/records/${editingRecordId.value}?user_id=${encodeURIComponent(store.username)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body),
       })
       const data = await res.json()
@@ -274,6 +283,7 @@ async function confirmDelete(row: any) {
     })
     const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}?user_id=${encodeURIComponent(store.username)}`, {
       method: 'DELETE',
+      credentials: 'include',
     })
     if (res.ok) {
       ElMessage.success('记录已删除')

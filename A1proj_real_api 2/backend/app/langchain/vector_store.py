@@ -17,8 +17,8 @@ def _get_embeddings() -> DashScopeCompatibleEmbeddings:
     settings = get_settings()
     return DashScopeCompatibleEmbeddings(
         model=settings.EMBEDDING_MODEL,
-        api_key=settings.api_key,
-        base_url=settings.api_base,
+        api_key=settings.VISION_API_KEY or settings.api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
 
 

@@ -55,9 +55,15 @@ class Settings(BaseSettings):
     ZHIPU_API_KEY: str = ""
     ZHIPU_BASE_URL: str = ""
 
+    # DashScope 备用 Key（千问模型切换时自动使用）
+    DASHSCOPE_API_KEY: str = ""
+
     @property
     def api_key(self) -> str:
-        return (self.LLM_API_KEY or self.ZHIPU_API_KEY).strip()
+        # DashScope provider 优先用 DASHSCOPE_API_KEY
+        if self.DASHSCOPE_API_KEY and "dashscope" in (self.LLM_BASE_URL or ""):
+            return self.DASHSCOPE_API_KEY.strip()
+        return (self.LLM_API_KEY or self.ZHIPU_API_KEY or self.DASHSCOPE_API_KEY).strip()
 
     @property
     def api_base(self) -> str:
@@ -89,8 +95,14 @@ class Settings(BaseSettings):
     VISION_API_KEY: str = ""
     VISION_BASE_URL: str = ""
 
+    # GLM 视觉模型 Key
+    GLM_API_KEY: str = ""
+
     @property
     def vision_api_key(self) -> str:
+        # GLM 模型优先用 GLM_API_KEY
+        if self.GLM_API_KEY and (self.VISION_MODEL or "").lower().startswith("glm"):
+            return self.GLM_API_KEY.strip()
         return (self.VISION_API_KEY or self.api_key).strip()
 
     @property
