@@ -33,7 +33,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="同步" width="75">
+          <el-table-column prop="synced" label="同步" width="75">
             <template #default="{ row }">
               <el-tag :type="row.synced === '已同步' ? 'success' : 'info'" size="small" effect="dark">
                 {{ row.synced || '未同步' }}
@@ -191,7 +191,7 @@ async function fetchRecords() {
     records.value = (data.records || []).filter((r: any) =>
       (r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim())
     );
-    total.value = data.total || 0
+    total.value = data.total || 0;
   } catch {
     ElMessage.error('加载记录失败')
   } finally {

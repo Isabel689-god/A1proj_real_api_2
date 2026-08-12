@@ -1,5 +1,5 @@
 """维修记录 CRUD + CSV 导出 API"""
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -10,6 +10,8 @@ import threading
 from datetime import datetime
 
 from app.db import get_session, MaintenanceRecord
+from app.api.v1.knowledge import verify_admin
+from sqlalchemy.orm import defer
 
 router = APIRouter(prefix="/maintenance", tags=["维修记录"])
 
@@ -45,6 +47,8 @@ class RecordUpdate(BaseModel):
     repair_duration: Optional[str] = None
     fault_cause: Optional[str] = None
     fault_resolved: Optional[str] = None
+    synced: Optional[str] = None
+    report_order_id: Optional[str] = None
 
 
 def _safe_datetime(val: str | None):
@@ -91,7 +95,7 @@ def list_records(
     """分页查询维修记录，user_id 为空时返回全部"""
     db = get_session()
     try:
-        q = db.query(MaintenanceRecord)
+        q = db.query(MaintenanceRecord).options(defer(MaintenanceRecord.report_data))
         if user_id:
             q = q.filter(MaintenanceRecord.user_id == user_id)
         q = q.order_by(MaintenanceRecord.updated_at.desc())
@@ -274,6 +278,34 @@ def export_records(user_id: str = Query("")):
                 "Content-Disposition": f"attachment; filename=maintenance_records_{datetime.now().strftime('%Y%m%d')}.csv"
             },
         )
+    finally:
+        db.close()
+
+
+@router.get("/reports/all")
+def get_all_reports(_=Depends(verify_admin)):
+    """管理员获取所有已提交报告。"""
+    db = get_session()
+    try:
+        records = (
+            db.query(MaintenanceRecord)
+            .filter(
+                MaintenanceRecord.report_data.isnot(None),
+                MaintenanceRecord.report_submitted == 1,
+            )
+            .limit(200)
+            .all()
+        )
+        # 在 Python 端排序，避免 MySQL 排序大字段超内存
+        records.sort(key=lambda r: r.created_at or datetime.min, reverse=True)
+        result = []
+        for r in records:
+            if r.report_data:
+                item = dict(r.report_data)
+                item["_record_id"] = r.record_id
+                item["_user_id"] = r.user_id
+                result.append(item)
+        return {"reports": result}
     finally:
         db.close()
 

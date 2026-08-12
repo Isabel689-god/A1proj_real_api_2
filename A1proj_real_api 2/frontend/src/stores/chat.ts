@@ -3,6 +3,11 @@ import type { ConversationSession, ChatMessage, UploadedImageState } from '../ty
 import { sendChatMessageStream } from '../api/chat';
 
 const AUTH_KEY = 'a1proj_auth';
+const REPORTS_KEY = 'INDUSTRIAL_GLOBAL_REPORTS';
+
+function reportsKey(username: string) {
+  return username ? `${REPORTS_KEY}_${username}` : REPORTS_KEY;
+}
 
 function loadSavedAuth() {
   try {
@@ -29,7 +34,8 @@ export const useChatStore = defineStore('chat', {
     group: (savedAuth.group || '') as string,
     permissions: (savedAuth.permissions || []) as string[],
 
-    globalReports: JSON.parse(localStorage.getItem('INDUSTRIAL_GLOBAL_REPORTS') || '[]') as Array<any>,
+    globalReports: JSON.parse(localStorage.getItem(reportsKey(savedAuth.username || '')) || '[]') as Array<any>,
+    maintenanceRefreshTrigger: false as boolean,
     sopTick: 0,  // SOP 变更计数器，强制前端刷新
     lockedSOP: null as any,  // 首轮锁定的 SOP 结构，后续只更新状态
     });
@@ -343,6 +349,12 @@ export const useChatStore = defineStore('chat', {
       this.permissions = permissions;
       if (status) {
         localStorage.setItem(AUTH_KEY, JSON.stringify({ username, group, permissions }));
+        // 切换用户时重载该用户的报告，避免串号
+        try {
+          this.globalReports = JSON.parse(localStorage.getItem(reportsKey(username)) || '[]');
+        } catch {
+          this.globalReports = [];
+        }
       } else {
         localStorage.removeItem(AUTH_KEY);
       }
@@ -355,11 +367,14 @@ export const useChatStore = defineStore('chat', {
     submitReport(report: any) {
       report.submitStatus = '已提交';
       this.globalReports.unshift(report);
-      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(this.globalReports));
+      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
     },
     deleteReport(index: number) {
       this.globalReports.splice(index, 1);
-      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(this.globalReports));
+      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
+    },
+    saveReports() {
+      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
     },
     async logout() {
       if (this.username) {

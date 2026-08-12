@@ -66,16 +66,14 @@
           </el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="model_config">
+        <el-sub-menu index="group_model">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>模型配置</span>
           </template>
-          <el-menu-item index="model_chat"><span>对话模型</span></el-menu-item>
-          <el-menu-item index="model_vision"><span>视觉模型</span></el-menu-item>
-          <el-menu-item index="model_embedding"><span>Embedding 模型</span></el-menu-item>
-          <el-menu-item index="model_asr"><span>ASR 语音识别</span></el-menu-item>
-          <el-menu-item index="model_tts"><span>TTS 语音合成</span></el-menu-item>
+          <el-menu-item index="model_config">
+            <span>模型配置</span>
+          </el-menu-item>
         </el-sub-menu>
         <div style="flex:1"></div>
         <div style="padding: 10px;">
@@ -299,8 +297,8 @@
               <el-button size="small" @click="loadRecords">刷新记录</el-button>
             </div>
           </div>
-          <el-empty v-if="store.globalReports.length === 0" description="暂无一线操作员提交工单" />
-          <el-table v-else :data="store.globalReports" size="small" class="three-line-table" style="width:100%">
+          <el-empty v-if="globalReports.length === 0" description="暂无一线操作员提交工单" />
+          <el-table v-else :data="globalReports" size="small" class="three-line-table" style="width:100%">
             <el-table-column prop="orderId" label="编号" width="160" show-overflow-tooltip />
             <el-table-column prop="dispatchTime" label="开始时间" width="150" />
             <el-table-column prop="submitTime" label="结束时间" width="150" />
@@ -309,7 +307,7 @@
                 {{ row.messages?.length || 0 }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200">
+            <el-table-column label="操作" width="140">
               <template #default="{ row, $index }">
                 <el-button size="small" type="primary" link @click="viewDetails(row)">查看</el-button>
                 <el-popconfirm title="确定永久删除这条记录吗？" @confirm="handleDelete($index)">
@@ -416,7 +414,6 @@
           </div>
           <div class="glass-card monitor-card">
             <div class="card-title">服务连通性</div>
-            <div class="monitor-item"><span class="label">模型类型</span><span class="value">{{ systemStatus.services?.llm_model || '-' }}</span></div>
             <div class="monitor-item"><span class="label">数据库</span><el-tag :type="getVectorStatusType(systemStatus.services?.database?.status)" size="small">{{ systemStatus.services?.database?.label || '未知' }}</el-tag></div>
             <div class="monitor-item"><span class="label">数据目录</span><el-tag :type="systemStatus.services?.data_dir_exists ? 'success' : 'danger'" size="small">{{ systemStatus.services?.data_dir_exists ? '存在' : '缺失' }}</el-tag></div>
             <div class="monitor-item"><span class="label">知识目录</span><el-tag :type="systemStatus.services?.knowledge_dir_exists ? 'success' : 'danger'" size="small">{{ systemStatus.services?.knowledge_dir_exists ? '存在' : '缺失' }}</el-tag></div>
@@ -452,123 +449,138 @@
       </div>
 
       <!-- 知识图谱 -->
-      <div v-if="activeMenu === 'model_chat'" class="content-panel">
-        <div class="card-title">📡 对话模型配置</div>
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
-            <el-input v-model="chatForm.provider" size="small" style="width:420px" placeholder="deepseek" />
+      <div v-if="activeMenu === 'model_config'" class="content-panel">
+        <div class="model-grid">
+          <!-- 对话模型 -->
+          <div class="glass-card model-card">
+            <div class="card-title">💬 对话模型</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Provider</span>
+                <el-input v-model="chatForm.provider" size="small" placeholder="deepseek" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Model</span>
+                <el-input v-model="chatForm.model" size="small" placeholder="deepseek-chat" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Base URL</span>
+                <el-input v-model="chatForm.base_url" size="small" placeholder="https://api.deepseek.com/v1" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">API Key</span>
+                <el-input v-model="chatForm.api_key" size="small" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px">
+                <el-tag v-if="modelSaveMsg" :type="modelSaveOk?'success':'danger'" size="small">{{ modelSaveMsg }}</el-tag>
+                <el-button size="small" type="primary" @click="saveChatModel" :loading="modelSaving">保存</el-button>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
-            <el-input v-model="chatForm.model" size="small" style="width:420px" placeholder="deepseek-chat" />
+          <!-- 视觉模型 -->
+          <div class="glass-card model-card">
+            <div class="card-title">👁️ 视觉模型</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Provider</span>
+                <el-input v-model="visionForm.provider" size="small" placeholder="dashscope" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Model</span>
+                <el-input v-model="visionForm.model" size="small" placeholder="qwen-vl-plus" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Base URL</span>
+                <el-input v-model="visionForm.base_url" size="small" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">API Key</span>
+                <el-input v-model="visionForm.api_key" size="small" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px">
+                <el-tag v-if="visionSaveMsg" :type="visionSaveOk?'success':'danger'" size="small">{{ visionSaveMsg }}</el-tag>
+                <el-button size="small" type="primary" @click="saveVisionModel" :loading="visionSaving">保存</el-button>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
-            <el-input v-model="chatForm.base_url" size="small" style="width:420px" placeholder="https://api.deepseek.com/v1" />
+          <!-- Embedding 模型 -->
+          <div class="glass-card model-card">
+            <div class="card-title">🧮 Embedding 模型</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Provider</span>
+                <el-input v-model="embeddingForm.provider" size="small" placeholder="dashscope" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Model</span>
+                <el-input v-model="embeddingForm.model" size="small" placeholder="text-embedding-v3" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Base URL</span>
+                <el-input v-model="embeddingForm.base_url" size="small" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">API Key</span>
+                <el-input v-model="embeddingForm.api_key" size="small" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px">
+                <el-tag v-if="embeddingSaveMsg" :type="embeddingSaveOk?'success':'danger'" size="small">{{ embeddingSaveMsg }}</el-tag>
+                <el-button size="small" type="primary" @click="saveEmbeddingModel" :loading="embeddingSaving">保存</el-button>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
-            <el-input v-model="chatForm.api_key" size="small" style="width:420px" />
-            <el-button size="small" type="primary" @click="saveChatModel" :loading="modelSaving">保存</el-button>
+          <!-- ASR -->
+          <div class="glass-card model-card">
+            <div class="card-title">🎤 ASR 语音识别</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Provider</span>
+                <el-input v-model="asrForm.provider" size="small" placeholder="百度智能云" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Model</span>
+                <el-input v-model="asrForm.model" size="small" placeholder="短语音识别 标准版" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Base URL</span>
+                <el-input v-model="asrForm.base_url" size="small" placeholder="https://vop.baidu.com/server_api" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">API Key</span>
+                <el-input v-model="asrForm.api_key" size="small" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px">
+                <el-tag v-if="asrSaveMsg" :type="asrSaveOk?'success':'danger'" size="small">{{ asrSaveMsg }}</el-tag>
+                <el-button size="small" type="primary" @click="saveAsrModel" :loading="asrSaving">保存</el-button>
+              </div>
+            </div>
           </div>
-          <el-tag v-if="modelSaveMsg" :type="modelSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ modelSaveMsg }}</el-tag>
-        </div>
-      </div>
-
-      <div v-if="activeMenu === 'model_vision'" class="content-panel">
-        <div class="card-title">👁️ 视觉模型配置</div>
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
-            <el-input v-model="visionForm.provider" size="small" style="width:420px" placeholder="dashscope" />
+          <!-- TTS -->
+          <div class="glass-card model-card">
+            <div class="card-title">🔊 TTS 语音合成</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Provider</span>
+                <el-input v-model="ttsForm.provider" size="small" placeholder="百度 AI 开放平台" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Model</span>
+                <el-input v-model="ttsForm.model" size="small" placeholder="短文本在线语音合成" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">Base URL</span>
+                <el-input v-model="ttsForm.base_url" size="small" placeholder="https://tsn.baidu.com/text2audio" />
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:60px;font-size:12px;color:var(--text-secondary)">API Key</span>
+                <el-input v-model="ttsForm.api_key" size="small" />
+              </div>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px">
+                <el-tag v-if="ttsSaveMsg" :type="ttsSaveOk?'success':'danger'" size="small">{{ ttsSaveMsg }}</el-tag>
+                <el-button size="small" type="primary" @click="saveTtsModel" :loading="ttsSaving">保存</el-button>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
-            <el-input v-model="visionForm.model" size="small" style="width:420px" placeholder="qwen-vl-plus" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
-            <el-input v-model="visionForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
-            <el-input v-model="visionForm.api_key" size="small" style="width:420px" />
-            <el-button size="small" type="primary" @click="saveVisionModel" :loading="visionSaving">保存</el-button>
-          </div>
-          <el-tag v-if="visionSaveMsg" :type="visionSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ visionSaveMsg }}</el-tag>
-        </div>
-      </div>
-
-      <div v-if="activeMenu === 'model_embedding'" class="content-panel">
-        <div class="card-title">🔢 Embedding 模型配置</div>
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
-            <el-input v-model="embeddingForm.provider" size="small" style="width:420px" placeholder="dashscope" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
-            <el-input v-model="embeddingForm.model" size="small" style="width:420px" placeholder="text-embedding-v3" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
-            <el-input v-model="embeddingForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
-            <el-input v-model="embeddingForm.api_key" size="small" style="width:420px" />
-            <el-button size="small" type="primary" @click="saveEmbeddingModel" :loading="embeddingSaving">保存</el-button>
-          </div>
-          <el-tag v-if="embeddingSaveMsg" :type="embeddingSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ embeddingSaveMsg }}</el-tag>
-        </div>
-      </div>
-
-      <div v-if="activeMenu === 'model_asr'" class="content-panel">
-        <div class="card-title">🎤 ASR 语音识别配置</div>
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
-            <el-input v-model="asrForm.provider" size="small" style="width:420px" placeholder="dashscope / openai" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
-            <el-input v-model="asrForm.model" size="small" style="width:420px" placeholder="paraformer-v2 / whisper-1" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
-            <el-input v-model="asrForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/api/v1/services/audio/asr" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
-            <el-input v-model="asrForm.api_key" size="small" style="width:420px" />
-            <el-button size="small" type="primary" @click="saveAsrModel" :loading="asrSaving">保存</el-button>
-          </div>
-          <el-tag v-if="asrSaveMsg" :type="asrSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ asrSaveMsg }}</el-tag>
-        </div>
-      </div>
-
-      <div v-if="activeMenu === 'model_tts'" class="content-panel">
-        <div class="card-title">🔊 TTS 语音合成配置</div>
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
-            <el-input v-model="ttsForm.provider" size="small" style="width:420px" placeholder="dashscope / openai" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
-            <el-input v-model="ttsForm.model" size="small" style="width:420px" placeholder="cosyvoice-v1 / tts-1" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
-            <el-input v-model="ttsForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/api/v1/services/audio/tts" />
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
-            <el-input v-model="ttsForm.api_key" size="small" style="width:420px" />
-            <el-button size="small" type="primary" @click="saveTtsModel" :loading="ttsSaving">保存</el-button>
-          </div>
-          <el-tag v-if="ttsSaveMsg" :type="ttsSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ ttsSaveMsg }}</el-tag>
         </div>
       </div>
 
@@ -842,7 +854,7 @@ const loadModelConfig = async () => {
 const theme = inject<any>('theme');
 const toggleTheme = inject<() => void>('toggleTheme', () => {});
 const activeMenu = ref('users');
-watch(activeMenu, v => { if (v.startsWith('model_')) loadModelConfig(); });
+watch(activeMenu, v => { if (v === 'model_config') loadModelConfig(); });
 const isCollapsed = ref(false);
 const showHistoryDialog = ref(false);
 const selectedChatHistory = ref<any[]>([]);
@@ -1297,9 +1309,7 @@ const pageTitle = computed(() => {
     monitor: '系统运维监控面板 (System Monitor)',
     knowledge_mysql: '知识图谱',
     maintenance_records: '维修总结',
-    model_chat: '模型配置 — 对话模型',
-    model_vision: '模型配置 — 视觉模型',
-    model_embedding: '模型配置 — Embedding 模型',
+    model_config: '模型配置',
   };
   return map[activeMenu.value] || '管理中枢';
 });
@@ -1334,6 +1344,7 @@ const handleMenuSelect = (index: string) => {
   if (index === 'manuals') loadManualList();
   if (index === 'monitor') loadSystemStatus();
   if (index === 'case_library') loadCaseLibrary();
+  if (index === 'records') loadRecords();
 };
 
 // ==================== 维修案例库 ====================
@@ -1375,13 +1386,29 @@ const viewDetails = (row: any) => {
   showHistoryDialog.value = true;
 };
 
-const handleDelete = (index: number) => {
-  store.deleteReport(index);
+const handleDelete = async (index: number) => {
+  const item = globalReports.value[index];
+  if (item._record_id) {
+    try {
+      await fetch(`${API_BASE}/maintenance/records/${item._record_id}`, { method: 'DELETE' });
+    } catch { /* */ }
+  }
+  globalReports.value.splice(index, 1);
   ElMessage.success('记录已成功删除');
 };
 
-const loadRecords = () => {
-  ElMessage.info('记录已刷新');
+const globalReports = ref<any[]>([]);
+const loadingRecords = ref(false);
+const loadRecords = async () => {
+  loadingRecords.value = true;
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/reports/all`, { headers: { 'X-Admin-Token': ADMIN_TOKEN } });
+    if (res.ok) {
+      const data = await res.json();
+      globalReports.value = data.reports || [];
+    }
+  } catch { /* */ }
+  loadingRecords.value = false;
 };
 
 // ==================== 图谱刷新 ====================
@@ -2024,6 +2051,22 @@ onMounted(() => {
   font-weight: 700;
   font-size: 16px;
   color: var(--primary-color);
+}
+/* ── 模型配置网格 ── */
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+.model-card {
+  padding: 18px;
+  border-radius: 12px;
+}
+.model-card .card-title {
+  margin-bottom: 12px;
+}
+.model-card .el-input {
+  flex: 1;
 }
 .test-result {
   background: var(--bg-card);

@@ -102,15 +102,11 @@
                 {{ row.messages?.length || 0 }}
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="80" align="center">
-              <template #default="{ row }">
-                <el-tag size="small" :type="row.maintenanceAdded ? 'success' : 'info'">{{ row.maintenanceAdded ? '已加入' : '未加入' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="280" align="right">
+            <el-table-column label="操作" width="320" align="center">
               <template #default="{ row }">
                 <el-button size="small" type="primary" link @click="viewHistoryChat(row)">查看</el-button>
-                <el-button size="small" type="warning" plain @click="saveToMaintenance(row)">📝 加入维修总结</el-button>
+                <el-button v-if="!row.maintenanceAdded" size="small" type="warning" plain @click="saveToMaintenance(row)">📝 加入维修总结</el-button>
+                <el-tag v-else size="small" type="success">已加入</el-tag>
                 <el-popconfirm title="确定删除该记录吗？" @confirm="deleteReport(row)">
                   <template #reference>
                     <el-button size="small" type="danger" link>删除</el-button>
@@ -197,7 +193,7 @@ const loadMaintenanceStatus = async () => {
           store.globalReports.push(rep);
         }
       }
-      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+      store.saveReports();
     }
   } catch {}
 
@@ -226,9 +222,11 @@ const loadMaintenanceStatus = async () => {
         .filter((r: any) => r.report_order_id && (r.description || r.fault_type))
         .map((r: any) => r.report_order_id));
       for (const item of store.globalReports) {
-        if (!item.maintenanceAdded && addedIds.has(item.orderId)) item.maintenanceAdded = true;
+        if (!item.maintenanceAdded && addedIds.has(item.orderId)) {
+          item.maintenanceAdded = true;
+        }
       }
-      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+      store.saveReports();
     }
   } catch { /* */ }
 };
@@ -237,12 +235,13 @@ const deleteReport = (item: any) => {
   const idx = store.globalReports.findIndex((r: any) => r.orderId === item.orderId);
   if (idx >= 0) {
     store.globalReports.splice(idx, 1);
-    localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+    store.saveReports();
   }
   ElMessage.success('已删除');
 };
 
 const saveToMaintenance = async (item: any) => {
+  if (item.maintenanceAdded) return;
   const msgs = item.messages || [];
   // 合并所有 assistant 消息，查找完整诊断格式
   const fullText = msgs.filter((m: any) => m.role === 'assistant').map((m: any) => m.content || '').join('\n');
@@ -327,11 +326,31 @@ const saveToMaintenance = async (item: any) => {
     });
     if (res.ok) {
       item.maintenanceAdded = true;
-      localStorage.setItem('INDUSTRIAL_GLOBAL_REPORTS', JSON.stringify(store.globalReports));
+      store.saveReports();
       ElMessage.success('已加入维修记录总结');
     }
     else { const d = await res.json(); ElMessage.error(d.detail || '保存失败'); }
   } catch (e: any) { ElMessage.error('保存失败: ' + (e?.message || '')); }
+};
+
+const removeFromMaintenance = async (item: any) => {
+  try {
+    const res = await fetch(`${apiBase3}/maintenance/records?page_size=500`);
+    if (res.ok) {
+      const data = await res.json();
+      const orderId = item.orderId || '';
+      const target = (data.records || []).find((r: any) => r.report_order_id === orderId);
+      if (target) {
+        await fetch(`${apiBase3}/maintenance/records/${target.record_id}`, { method: 'DELETE' });
+      }
+    }
+    item._added = false;
+    item.maintenanceAdded = false;
+    store.saveReports();
+    // 通知维修总结抽屉刷新
+    store.maintenanceRefreshTrigger = !store.maintenanceRefreshTrigger;
+    ElMessage.success('已取消加入');
+  } catch { ElMessage.error('操作失败'); }
 };
 
 const roleNameMap: Record<string, string> = {
