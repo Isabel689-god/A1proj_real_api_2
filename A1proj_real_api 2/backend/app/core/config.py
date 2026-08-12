@@ -86,11 +86,25 @@ class Settings(BaseSettings):
         )
 
     # ── 向量嵌入 ──
+    EMBEDDING_PROVIDER: str = ""
     EMBEDDING_MODEL: str = "text-embedding-v3"
     EMBEDDING_DIM: int = 1024
     EMBEDDING_BATCH_SIZE: int = 10
 
+    # ── 语音识别 (ASR) ──
+    ASR_PROVIDER: str = ""
+    ASR_MODEL: str = ""
+    ASR_API_KEY: str = ""
+    ASR_BASE_URL: str = ""
+
+    # ── 语音合成 (TTS) ──
+    TTS_PROVIDER: str = ""
+    TTS_MODEL: str = ""
+    TTS_API_KEY: str = ""
+    TTS_BASE_URL: str = ""
+
     # ── 视觉理解（可独立配置，默认复用大模型配置）──
+    VISION_PROVIDER: str = ""
     VISION_MODEL: str = "qwen-vl-plus"
     VISION_API_KEY: str = ""
     VISION_BASE_URL: str = ""

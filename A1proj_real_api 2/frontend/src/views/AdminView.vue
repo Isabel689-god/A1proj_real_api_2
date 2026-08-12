@@ -74,6 +74,8 @@
           <el-menu-item index="model_chat"><span>对话模型</span></el-menu-item>
           <el-menu-item index="model_vision"><span>视觉模型</span></el-menu-item>
           <el-menu-item index="model_embedding"><span>Embedding 模型</span></el-menu-item>
+          <el-menu-item index="model_asr"><span>ASR 语音识别</span></el-menu-item>
+          <el-menu-item index="model_tts"><span>TTS 语音合成</span></el-menu-item>
         </el-sub-menu>
         <div style="flex:1"></div>
         <div style="padding: 10px;">
@@ -478,6 +480,10 @@
         <div class="card-title">👁️ 视觉模型配置</div>
         <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
+            <el-input v-model="visionForm.provider" size="small" style="width:420px" placeholder="dashscope" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
             <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
             <el-input v-model="visionForm.model" size="small" style="width:420px" placeholder="qwen-vl-plus" />
           </div>
@@ -498,6 +504,10 @@
         <div class="card-title">🔢 Embedding 模型配置</div>
         <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
+            <el-input v-model="embeddingForm.provider" size="small" style="width:420px" placeholder="dashscope" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
             <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
             <el-input v-model="embeddingForm.model" size="small" style="width:420px" placeholder="text-embedding-v3" />
           </div>
@@ -511,6 +521,54 @@
             <el-button size="small" type="primary" @click="saveEmbeddingModel" :loading="embeddingSaving">保存</el-button>
           </div>
           <el-tag v-if="embeddingSaveMsg" :type="embeddingSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ embeddingSaveMsg }}</el-tag>
+        </div>
+      </div>
+
+      <div v-if="activeMenu === 'model_asr'" class="content-panel">
+        <div class="card-title">🎤 ASR 语音识别配置</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
+            <el-input v-model="asrForm.provider" size="small" style="width:420px" placeholder="dashscope / openai" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
+            <el-input v-model="asrForm.model" size="small" style="width:420px" placeholder="paraformer-v2 / whisper-1" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
+            <el-input v-model="asrForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/api/v1/services/audio/asr" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
+            <el-input v-model="asrForm.api_key" size="small" style="width:420px" />
+            <el-button size="small" type="primary" @click="saveAsrModel" :loading="asrSaving">保存</el-button>
+          </div>
+          <el-tag v-if="asrSaveMsg" :type="asrSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ asrSaveMsg }}</el-tag>
+        </div>
+      </div>
+
+      <div v-if="activeMenu === 'model_tts'" class="content-panel">
+        <div class="card-title">🔊 TTS 语音合成配置</div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Provider</span>
+            <el-input v-model="ttsForm.provider" size="small" style="width:420px" placeholder="dashscope / openai" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Model</span>
+            <el-input v-model="ttsForm.model" size="small" style="width:420px" placeholder="cosyvoice-v1 / tts-1" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">Base URL</span>
+            <el-input v-model="ttsForm.base_url" size="small" style="width:420px" placeholder="https://dashscope.aliyuncs.com/api/v1/services/audio/tts" />
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:80px;font-size:13px;color:var(--text-secondary)">API Key</span>
+            <el-input v-model="ttsForm.api_key" size="small" style="width:420px" />
+            <el-button size="small" type="primary" @click="saveTtsModel" :loading="ttsSaving">保存</el-button>
+          </div>
+          <el-tag v-if="ttsSaveMsg" :type="ttsSaveOk?'success':'danger'" size="small" style="align-self:flex-start;margin-left:90px">{{ ttsSaveMsg }}</el-tag>
         </div>
       </div>
 
@@ -594,13 +652,23 @@ const selectedVisionModel = ref('');
 const visionSaving = ref(false);
 const visionSaveMsg = ref('');
 const visionSaveOk = ref(false);
-const visionForm = reactive({ model: '', base_url: '', api_key: '' });
+const visionForm = reactive({ provider: '', model: '', base_url: '', api_key: '' });
 
 const selectedEmbeddingModel = ref('');
 const embeddingSaving = ref(false);
 const embeddingSaveMsg = ref('');
 const embeddingSaveOk = ref(false);
-const embeddingForm = reactive({ model: '', base_url: '', api_key: '' });
+const embeddingForm = reactive({ provider: '', model: '', base_url: '', api_key: '' });
+
+const asrSaving = ref(false);
+const asrSaveMsg = ref('');
+const asrSaveOk = ref(false);
+const asrForm = reactive({ provider: '', model: '', base_url: '', api_key: '' });
+
+const ttsSaving = ref(false);
+const ttsSaveMsg = ref('');
+const ttsSaveOk = ref(false);
+const ttsForm = reactive({ provider: '', model: '', base_url: '', api_key: '' });
 
 const saveChatModel = async () => {
   const f = chatForm;
@@ -636,7 +704,7 @@ const saveVisionModel = async () => {
   visionSaving.value = true;
   visionSaveMsg.value = '';
   try {
-    const body: any = { type: 'vision', model: f.model, base_url: f.base_url };
+    const body: any = { type: 'vision', provider: f.provider, model: f.model, base_url: f.base_url };
     if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
     const res = await fetch(`${API_BASE}/monitor/model-config`, {
       method: 'PUT',
@@ -664,7 +732,7 @@ const saveEmbeddingModel = async () => {
   embeddingSaving.value = true;
   embeddingSaveMsg.value = '';
   try {
-    const body: any = { type: 'embedding', model: f.model, base_url: f.base_url };
+    const body: any = { type: 'embedding', provider: f.provider, model: f.model, base_url: f.base_url };
     if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
     const res = await fetch(`${API_BASE}/monitor/model-config`, {
       method: 'PUT',
@@ -685,6 +753,56 @@ const saveEmbeddingModel = async () => {
     embeddingSaveMsg.value = '请求失败';
   } finally { embeddingSaving.value = false; }
 };
+
+const saveAsrModel = async () => {
+  const f = asrForm;
+  if (!f.model) return;
+  asrSaving.value = true;
+  asrSaveMsg.value = '';
+  try {
+    const body: any = { type: 'asr', provider: f.provider, model: f.model, base_url: f.base_url };
+    if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
+    const res = await fetch(`${API_BASE}/monitor/model-config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      asrSaveOk.value = true;
+      asrSaveMsg.value = `已保存: ${f.model}`;
+      modelConfig.value = { ...modelConfig.value, asr: data.asr };
+    } else {
+      asrSaveOk.value = false;
+      asrSaveMsg.value = data.detail || '保存失败';
+    }
+  } catch { asrSaveOk.value = false; asrSaveMsg.value = '请求失败'; }
+  finally { asrSaving.value = false; }
+};
+
+const saveTtsModel = async () => {
+  const f = ttsForm;
+  if (!f.model) return;
+  ttsSaving.value = true;
+  ttsSaveMsg.value = '';
+  try {
+    const body: any = { type: 'tts', provider: f.provider, model: f.model, base_url: f.base_url };
+    if (f.api_key && !f.api_key.includes('***')) body.api_key = f.api_key;
+    const res = await fetch(`${API_BASE}/monitor/model-config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': ADMIN_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      ttsSaveOk.value = true;
+      ttsSaveMsg.value = `已保存: ${f.model}`;
+      modelConfig.value = { ...modelConfig.value, tts: data.tts };
+    } else {
+      ttsSaveOk.value = false;
+      ttsSaveMsg.value = data.detail || '保存失败';
+    }
+  } catch { ttsSaveOk.value = false; ttsSaveMsg.value = '请求失败'; }
+  finally { ttsSaving.value = false; }
+};
 const loadModelConfig = async () => {
   modelCfgLoading.value = true;
   try {
@@ -694,17 +812,29 @@ const loadModelConfig = async () => {
       const c = modelConfig.value?.chat;
       const v = modelConfig.value?.vision;
       const e = modelConfig.value?.embedding;
+      const a = modelConfig.value?.asr;
+      const t = modelConfig.value?.tts;
       chatForm.provider = c?.provider || '';
       chatForm.model = c?.model || '';
       chatForm.base_url = c?.base_url || '';
+      visionForm.provider = v?.provider || '';
       visionForm.model = v?.model || '';
       visionForm.base_url = v?.base_url || '';
+      embeddingForm.provider = e?.provider || '';
       embeddingForm.model = e?.model || '';
       embeddingForm.base_url = e?.base_url || '';
+      asrForm.provider = a?.provider || '';
+      asrForm.model = a?.model || '';
+      asrForm.base_url = a?.base_url || '';
+      ttsForm.provider = t?.provider || '';
+      ttsForm.model = t?.model || '';
+      ttsForm.base_url = t?.base_url || '';
       // API Key 脱敏提示
       chatForm.api_key = c?.key_hint || '';
       visionForm.api_key = v?.key_hint || '';
       embeddingForm.api_key = e?.key_hint || '';
+      asrForm.api_key = a?.key_hint || '';
+      ttsForm.api_key = t?.key_hint || '';
     }
   } catch {} finally { modelCfgLoading.value = false; }
 };

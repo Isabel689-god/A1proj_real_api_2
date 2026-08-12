@@ -238,6 +238,20 @@ def get_model_config(_=Depends(verify_admin)):
             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "has_key": bool(getattr(s, 'VISION_API_KEY', '') or s.api_key),
             "key_hint": _hint(getattr(s, 'VISION_API_KEY', '') or s.api_key),
+        },
+        "asr": {
+            "provider": s.ASR_PROVIDER,
+            "model": s.ASR_MODEL,
+            "base_url": getattr(s, 'ASR_BASE_URL', ''),
+            "has_key": bool(s.ASR_API_KEY),
+            "key_hint": _hint(s.ASR_API_KEY),
+        },
+        "tts": {
+            "provider": s.TTS_PROVIDER,
+            "model": s.TTS_MODEL,
+            "base_url": getattr(s, 'TTS_BASE_URL', ''),
+            "has_key": bool(s.TTS_API_KEY),
+            "key_hint": _hint(s.TTS_API_KEY),
         }
     }
 
@@ -249,9 +263,13 @@ def update_model_config(payload: dict, _=Depends(verify_admin)):
     model = (payload.get("model") or "").strip()
 
     if model_type == "vision":
-        return _update_vision_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
+        return _update_vision_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""), provider=payload.get("provider", ""))
     if model_type == "embedding":
-        return _update_embedding_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
+        return _update_embedding_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""), provider=payload.get("provider", ""))
+    if model_type == "asr":
+        return _update_asr_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""), provider=payload.get("provider", ""))
+    if model_type == "tts":
+        return _update_tts_model(model, base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""), provider=payload.get("provider", ""))
     return _update_chat_model(model, provider=payload.get("provider", ""), base_url=payload.get("base_url", ""), api_key=payload.get("api_key", ""))
 
 
@@ -271,8 +289,9 @@ def _update_chat_model(model: str, provider: str = "", base_url: str = "", api_k
     }
 
 
-def _update_vision_model(model: str, base_url: str = "", api_key: str = ""):
+def _update_vision_model(model: str, base_url: str = "", api_key: str = "", provider: str = ""):
     kv = {"VISION_MODEL": model}
+    if provider: kv["VISION_PROVIDER"] = provider
     if base_url: kv["VISION_BASE_URL"] = base_url
     if api_key: kv["VISION_API_KEY"] = api_key
     _write_env(kv)
@@ -286,8 +305,9 @@ def _update_vision_model(model: str, base_url: str = "", api_key: str = ""):
     }
 
 
-def _update_embedding_model(model: str, base_url: str = "", api_key: str = ""):
+def _update_embedding_model(model: str, base_url: str = "", api_key: str = "", provider: str = ""):
     kv = {"EMBEDDING_MODEL": model}
+    if provider: kv["EMBEDDING_PROVIDER"] = provider
     if api_key: kv["VISION_API_KEY"] = api_key
     _write_env(kv)
 
@@ -297,6 +317,38 @@ def _update_embedding_model(model: str, base_url: str = "", api_key: str = ""):
         "success": True,
         "embedding": {"model": s.EMBEDDING_MODEL,
                       "has_key": bool(getattr(s, 'VISION_API_KEY', '') or s.api_key)},
+    }
+
+
+def _update_asr_model(model: str, base_url: str = "", api_key: str = "", provider: str = ""):
+    kv = {"ASR_MODEL": model}
+    if provider: kv["ASR_PROVIDER"] = provider
+    if base_url: kv["ASR_BASE_URL"] = base_url
+    if api_key: kv["ASR_API_KEY"] = api_key
+    _write_env(kv)
+
+    get_settings.cache_clear()
+    s = get_settings()
+    return {
+        "success": True,
+        "asr": {"provider": s.ASR_PROVIDER, "model": s.ASR_MODEL,
+                "base_url": getattr(s, 'ASR_BASE_URL', ''), "has_key": bool(s.ASR_API_KEY)},
+    }
+
+
+def _update_tts_model(model: str, base_url: str = "", api_key: str = "", provider: str = ""):
+    kv = {"TTS_MODEL": model}
+    if provider: kv["TTS_PROVIDER"] = provider
+    if base_url: kv["TTS_BASE_URL"] = base_url
+    if api_key: kv["TTS_API_KEY"] = api_key
+    _write_env(kv)
+
+    get_settings.cache_clear()
+    s = get_settings()
+    return {
+        "success": True,
+        "tts": {"provider": s.TTS_PROVIDER, "model": s.TTS_MODEL,
+                "base_url": getattr(s, 'TTS_BASE_URL', ''), "has_key": bool(s.TTS_API_KEY)},
     }
 
 
