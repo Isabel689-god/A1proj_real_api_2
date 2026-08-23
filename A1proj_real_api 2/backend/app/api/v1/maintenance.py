@@ -12,6 +12,7 @@ from datetime import datetime
 from app.db import get_session, MaintenanceRecord
 from app.api.v1.knowledge import verify_admin
 from sqlalchemy.orm import defer
+from sqlalchemy import or_, and_
 
 router = APIRouter(prefix="/maintenance", tags=["维修记录"])
 
@@ -96,6 +97,11 @@ def list_records(
     db = get_session()
     try:
         q = db.query(MaintenanceRecord).options(defer(MaintenanceRecord.report_data))
+        # 过滤空记录（占位/报告记录：fault_type 与 description 均为空），只返回有效维修总结
+        q = q.filter(or_(
+            and_(MaintenanceRecord.fault_type.isnot(None), MaintenanceRecord.fault_type != ""),
+            and_(MaintenanceRecord.description.isnot(None), MaintenanceRecord.description != ""),
+        ))
         if user_id:
             q = q.filter(MaintenanceRecord.user_id == user_id)
         q = q.order_by(MaintenanceRecord.updated_at.desc())
@@ -164,30 +170,61 @@ def sync_to_graph(record_id: str, action: str = "sync"):
         db.close()
 
 
+@router.post("/records/{record_id}/review")
+def review_record(record_id: str, approve: bool = Query(...), reviewer: str = Query("admin")):
+    """人工审核"待确认"的维修记录。approve=true 通过并入库，false 驳回为未同步。"""
+    from app.services.auto_sync import review_pending_record
+    return review_pending_record(record_id, approve, reviewer)
+
+
 @router.post("/records")
 def create_record(req: RecordCreate, user_id: str = Query(...), background_tasks: BackgroundTasks = BackgroundTasks()):
     """新增维修记录"""
     db = get_session()
     try:
-        record = MaintenanceRecord(
-            record_id=f"mr:{uuid.uuid4().hex[:8]}",
-            user_id=user_id,
-            device_model=req.device_model,
-            fault_type=req.fault_type,
-            repair_date=req.repair_date,
-            technician=req.technician,
-            description=req.description,
-            solution=req.solution,
-            parts_replaced=req.parts_replaced,
-            status=req.status,
-            repair_start_time=_safe_datetime(req.repair_start_time),
-            repair_end_time=_safe_datetime(req.repair_end_time),
-            repair_duration=req.repair_duration,
-            fault_cause=req.fault_cause,
-            fault_resolved=req.fault_resolved,
-            report_order_id=req.report_order_id,
-        )
-        db.add(record)
+        # 治本：按 report_order_id 复用已有记录，避免同一工单堆积空占位记录
+        record = None
+        if req.report_order_id:
+            record = db.query(MaintenanceRecord).filter(
+                MaintenanceRecord.report_order_id == req.report_order_id
+            ).first()
+
+        if record:
+            # 复用已有记录：填充维修总结字段（保留 report_data / report_submitted）
+            record.user_id = user_id
+            record.device_model = req.device_model
+            record.fault_type = req.fault_type
+            record.repair_date = req.repair_date
+            record.technician = req.technician
+            record.description = req.description
+            record.solution = req.solution
+            record.parts_replaced = req.parts_replaced
+            record.status = req.status
+            record.repair_start_time = _safe_datetime(req.repair_start_time)
+            record.repair_end_time = _safe_datetime(req.repair_end_time)
+            record.repair_duration = req.repair_duration
+            record.fault_cause = req.fault_cause
+            record.fault_resolved = req.fault_resolved
+        else:
+            record = MaintenanceRecord(
+                record_id=f"mr:{uuid.uuid4().hex[:8]}",
+                user_id=user_id,
+                device_model=req.device_model,
+                fault_type=req.fault_type,
+                repair_date=req.repair_date,
+                technician=req.technician,
+                description=req.description,
+                solution=req.solution,
+                parts_replaced=req.parts_replaced,
+                status=req.status,
+                repair_start_time=_safe_datetime(req.repair_start_time),
+                repair_end_time=_safe_datetime(req.repair_end_time),
+                repair_duration=req.repair_duration,
+                fault_cause=req.fault_cause,
+                fault_resolved=req.fault_resolved,
+                report_order_id=req.report_order_id,
+            )
+            db.add(record)
         db.commit()
         db.refresh(record)
         # 后台自动同步到案例库
@@ -242,7 +279,7 @@ def export_records(user_id: str = Query("")):
     """导出维修记录为 CSV，user_id 为空时导出全部"""
     db = get_session()
     try:
-        q = db.query(MaintenanceRecord)
+        q = db.query(MaintenanceRecord).options(defer(MaintenanceRecord.report_data))
         if user_id:
             q = q.filter(MaintenanceRecord.user_id == user_id)
         rows = q.order_by(MaintenanceRecord.created_at.desc()).all()
@@ -321,10 +358,11 @@ def get_synced_reports(user_id: str = Query(...)):
                 MaintenanceRecord.user_id == user_id,
                 MaintenanceRecord.report_data.isnot(None),
             )
-            .order_by(MaintenanceRecord.created_at.desc())
             .limit(200)
             .all()
         )
+        # 在 Python 端排序，避免 MySQL 对含大字段 report_data 排序内存溢出（1038）
+        records.sort(key=lambda r: r.created_at or datetime.min, reverse=True)
         result = []
         for r in records:
             if r.report_data:

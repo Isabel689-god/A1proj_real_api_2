@@ -348,12 +348,16 @@
             <el-table-column prop="solution" label="维修方案" min-width="120" show-overflow-tooltip />
             <el-table-column prop="synced" label="同步" width="75">
               <template #default="{ row }">
-                <el-tag :type="row.synced==='已同步'?'success':'info'" size="small" effect="dark">{{ row.synced || '未同步' }}</el-tag>
+                <el-tag :type="row.synced==='已同步'?'success':row.synced==='待确认'?'warning':'info'" size="small" effect="dark">{{ row.synced || '未同步' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="210" fixed="right">
+            <el-table-column label="操作" width="260" fixed="right">
               <template #default="{ row }">
-                <el-button v-if="row.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(row)">同步</el-button>
+                <template v-if="row.synced === '待确认'">
+                  <el-button type="success" link size="small" @click="reviewMaintRecord(row, true)">通过</el-button>
+                  <el-button type="danger" link size="small" @click="reviewMaintRecord(row, false)">驳回</el-button>
+                </template>
+                <el-button v-else-if="row.synced !== '已同步'" type="success" link size="small" @click="syncToGraph(row)">同步</el-button>
                 <el-button v-else type="warning" link size="small" @click="unsyncGraph(row)">取消同步</el-button>
                 <el-button type="primary" link size="small" @click="viewMaintDetail(row)">查看</el-button>
                 <el-button type="warning" link size="small" @click="editMaintDetail(row)">修改</el-button>
@@ -377,10 +381,10 @@
             <el-input v-model="maintForm.description" type="textarea" :rows="2" />
           </el-form-item>
           <el-form-item label="故障原因">
-            <el-input v-model="maintForm.fault_cause" type="textarea" :rows="2" />
+            <el-input v-model="maintForm.fault_cause" type="textarea" :rows="5" />
           </el-form-item>
           <el-form-item label="维修方案">
-            <el-input v-model="maintForm.solution" type="textarea" :rows="2" />
+            <el-input v-model="maintForm.solution" type="textarea" :rows="6" />
           </el-form-item>
           <el-form-item label="是否解决">
             <el-select v-model="maintForm.fault_resolved" style="width:100%">
@@ -962,6 +966,23 @@ const exportMaintCsv = () => {
   window.open(`${API_BASE}/maintenance/records/export${maintUserFilter.value ? '?user_id=' + maintUserFilter.value : ''}`, '_blank');
 };
 
+const reviewMaintRecord = async (row: any, approve: boolean) => {
+  try {
+    const res = await fetch(`${API_BASE}/maintenance/records/${row.record_id}/review?approve=${approve}&reviewer=admin`, { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      row.synced = data.synced || (approve ? '已同步' : '未同步');
+      ElMessage.success(approve ? '已通过并入库' : '已驳回');
+    } else {
+      ElMessage.error('操作失败');
+    }
+  } catch {
+    ElMessage.error('操作失败');
+  }
+  loadCaseLibrary();
+  loadMaintRecords();
+};
+
 const syncToGraph = async (row: any) => {
   row.synced = '已同步';
   try {
@@ -1005,7 +1026,7 @@ const syncAllMaint = async () => {
     if (!res.ok) throw new Error('加载失败');
     const data = await res.json();
     const unsynced = (data.records || []).filter((r: any) =>
-      r.synced !== '已同步' &&
+      r.synced !== '已同步' && r.synced !== '待确认' &&
       ((r.fault_type && r.fault_type.trim()) || (r.description && r.description.trim()))
     );
     if (unsynced.length === 0) { ElMessage.info('所有记录已同步'); maintSyncAll.value = false; return; }
@@ -1175,11 +1196,9 @@ const removeMember = async (group: string, username: string) => {
 const availablePerms = [
   { key: 'chat', label: '对话交互' },
   { key: 'view_graph', label: '查看图谱' },
-  { key: 'submit_report', label: '提交维修记录' },
-  { key: 'request_upload', label: '申请上传' },
-  { key: 'direct_upload', label: '直接上传' },
-  { key: 'update_graph', label: '更新图谱' },
-  { key: 'audit_uploads', label: '审核上传' }
+  { key: 'submit_report', label: '提交维修记录与总结' },
+  { key: 'upload_manual', label: '上传维修手册' },
+  { key: 'update_graph', label: '更新图谱' }
 ];
 
 const getPermName = (key: string) => availablePerms.find(p => p.key === key)?.label || key;

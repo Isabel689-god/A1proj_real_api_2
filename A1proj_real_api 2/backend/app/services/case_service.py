@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from app.db import get_session, MaintenanceRecord
+from sqlalchemy.orm import defer
 
 
 # 复用阈值：超过此分认为案例可直接复用
@@ -24,6 +25,12 @@ WEIGHT_SAME_CODE = 20              # 同代码
 WEIGHT_SAME_DEVICE = 15            # 同设备
 WEIGHT_SAME_TYPE = 10              # 同故障类型
 WEIGHT_KEYWORD_HIT = 3             # 每个关键词命中
+
+# 分档置信度（matched 判定按信号强度分档，不再堆分数归一化）
+CONF_SAME_DEVICE_AND_CODE = 0.95   # 同设备+同代码：最强信号，直接复用
+CONF_SAME_CODE = 0.85              # 同代码（跨设备）：复用 + 手册交叉验证
+CONF_SAME_DEVICE = 0.60            # 仅同设备：不足复用
+CONF_KEYWORD_MAX = 0.50            # 关键词弱匹配置信度上限
 
 
 def _extract_fault_code(text: str) -> str:
@@ -141,9 +148,8 @@ class CaseSearchService:
             if not best:
                 return {"matched": False, "confidence": 0.0, "cases": []}
 
-            # 归一化置信度：最高分 / 理论上限
-            max_possible = WEIGHT_SAME_DEVICE_AND_CODE + WEIGHT_SAME_TYPE + 20
-            confidence = min(round(best[0]["score"] / max_possible, 4), 1.0)
+            # 分档置信度：按匹配信号强度判定，同代码即达阈值
+            confidence = self._confidence(best[0])
             matched = confidence >= REUSE_THRESHOLD
 
             return {
@@ -192,7 +198,7 @@ class CaseSearchService:
 
         # 4. 如果以上都没命中，取最近 30 条做关键词兜底
         if not results:
-            records = db.query(MaintenanceRecord).order_by(
+            records = db.query(MaintenanceRecord).options(defer(MaintenanceRecord.report_data)).order_by(
                 MaintenanceRecord.created_at.desc()
             ).limit(30).all()
             for r in records:
@@ -240,6 +246,22 @@ class CaseSearchService:
 
         reason = " | ".join(reasons) if reasons else "关键词弱匹配"
         return score, reason
+
+    def _confidence(self, case: dict) -> float:
+        """分档置信度：按匹配信号强度直接判定，而非堆分数归一化。
+
+        同设备+同代码 → 0.95 直接复用；同代码 → 0.85 复用+交叉验证；
+        仅同设备 → 0.60 不足复用；关键词弱匹配 → 按分数归一化，上限 0.50。
+        """
+        reason = case.get("match_reason", "")
+        score = case.get("score", 0)
+        if "同设备+同代码" in reason:
+            return CONF_SAME_DEVICE_AND_CODE
+        if "同故障代码" in reason:
+            return CONF_SAME_CODE
+        if "同设备" in reason:
+            return CONF_SAME_DEVICE
+        return min(CONF_KEYWORD_MAX, round(score / 60, 4))
 
     def format_case_context(self, case: dict) -> str:
         """将匹配案例格式化为 LLM 上下文。"""

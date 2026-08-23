@@ -20,7 +20,6 @@
           :data="records"
           style="width: 100%"
           size="small"
-          max-height="420"
           v-loading="loading"
           empty-text="暂无维修记录"
           row-class-name="dark-row"
@@ -35,7 +34,7 @@
           </el-table-column>
           <el-table-column prop="synced" label="同步" width="75">
             <template #default="{ row }">
-              <el-tag :type="row.synced === '已同步' ? 'success' : 'info'" size="small" effect="dark">
+              <el-tag :type="row.synced === '已同步' ? 'success' : row.synced === '待确认' ? 'warning' : 'info'" size="small" effect="dark">
                 {{ row.synced || '未同步' }}
               </el-tag>
             </template>
@@ -99,10 +98,10 @@
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="描述故障现象" />
         </el-form-item>
         <el-form-item label="故障原因">
-          <el-input v-model="form.fault_cause" type="textarea" :rows="2" placeholder="分析故障根本原因" />
+          <el-input v-model="form.fault_cause" type="textarea" :rows="5" placeholder="分析故障根本原因" />
         </el-form-item>
         <el-form-item label="维修方案">
-          <el-input v-model="form.solution" type="textarea" :rows="2" placeholder="记录维修方案与总结" />
+          <el-input v-model="form.solution" type="textarea" :rows="6" placeholder="记录维修方案与总结" />
         </el-form-item>
         <el-form-item label="是否解决">
           <el-select v-model="form.fault_resolved" style="width: 100%">

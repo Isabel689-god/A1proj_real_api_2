@@ -38,7 +38,7 @@
       </button>
 
       <button
-        v-if="store.hasPermission('request_upload')"
+        v-if="store.hasPermission('upload_manual')"
         @click="showRequestDialog = true"
         :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
         title="申请录入新手册"
@@ -52,7 +52,7 @@
       </button>
 
       <button
-        v-if="store.hasPermission('direct_upload')"
+        v-if="store.hasPermission('upload_manual')"
         @click="showDirectUploadDialog = true"
         :class="isCollapsed ? 'new-session-circle-btn mt-8' : 'new-session-pill-btn mt-8'"
         title="直接上传设备手册"

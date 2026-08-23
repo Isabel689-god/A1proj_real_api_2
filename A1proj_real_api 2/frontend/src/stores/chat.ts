@@ -367,14 +367,28 @@ export const useChatStore = defineStore('chat', {
     submitReport(report: any) {
       report.submitStatus = '已提交';
       this.globalReports.unshift(report);
-      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
+      this.saveReports();
     },
     deleteReport(index: number) {
       this.globalReports.splice(index, 1);
-      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
+      this.saveReports();
     },
     saveReports() {
-      localStorage.setItem(reportsKey(this.username), JSON.stringify(this.globalReports));
+      // 剥离 base64 图片字段，避免 localStorage 超配额（QuotaExceededError）
+      const slim = this.globalReports.map((r: any) => ({
+        ...r,
+        messages: Array.isArray(r.messages)
+          ? r.messages.map((m: any) => (m && m.imageUrl ? { ...m, imageUrl: undefined } : m))
+          : r.messages,
+      }));
+      try {
+        localStorage.setItem(reportsKey(this.username), JSON.stringify(slim));
+      } catch {
+        // 仍超配额则降级：只存最近 10 条
+        try {
+          localStorage.setItem(reportsKey(this.username), JSON.stringify(slim.slice(0, 10)));
+        } catch { /* 报告以 MySQL 为准，本地缓存失败可忽略 */ }
+      }
     },
     async logout() {
       if (this.username) {

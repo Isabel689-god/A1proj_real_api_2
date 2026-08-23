@@ -59,23 +59,23 @@
           </el-button>
         </div>
 
-        <div v-if="store.hasPermission('audit_uploads') || store.hasPermission('view_intern_logs')" class="section-block">
+        <div v-if="store.hasPermission('upload_manual')" class="section-block">
           <div class="section-title">
             <span class="title-icon">🛡️</span>
             <span>高级职工专属管理</span>
           </div>
           <div class="action-grid">
-            <el-button v-if="store.hasPermission('audit_uploads')" type="warning" plain class="action-btn">
+            <el-button v-if="store.hasPermission('upload_manual')" type="warning" plain class="action-btn">
               待审普通员工手册
               <span class="badge">0</span>
             </el-button>
-            <el-button v-if="store.hasPermission('direct_upload')" type="success" plain class="action-btn">
+            <el-button v-if="store.hasPermission('upload_manual')" type="success" plain class="action-btn">
               直传设备手册
             </el-button>
           </div>
         </div>
 
-        <div v-if="store.hasPermission('request_upload') && !store.hasPermission('direct_upload')" class="section-block">
+        <div v-if="store.hasPermission('upload_manual')" class="section-block">
           <div class="section-title">
             <span class="title-icon">📝</span>
             <span>手册更新业务</span>
@@ -89,7 +89,6 @@
           <div class="section-title">
             <span class="title-icon">📋</span>
             <span>我的维修记录</span>
-            <el-button size="small" type="success" plain style="margin-left:8px;" @click="syncAllToCloud">☁️ 同步到云端</el-button>
             <el-button size="small" type="primary" link style="margin-left:auto;" @click="showMaintenanceDrawer = true">🔧 维修总结</el-button>
           </div>
           <el-empty v-if="historyReports.length === 0" description="暂无提报数据" :image-size="80" class="dark-empty" />
@@ -102,16 +101,16 @@
                 {{ row.messages?.length || 0 }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="320" align="center">
+            <el-table-column label="操作" width="280" align="left">
               <template #default="{ row }">
                 <el-button size="small" type="primary" link @click="viewHistoryChat(row)">查看</el-button>
-                <el-button v-if="!row.maintenanceAdded" size="small" type="warning" plain @click="saveToMaintenance(row)">📝 加入维修总结</el-button>
-                <el-tag v-else size="small" type="success">已加入</el-tag>
                 <el-popconfirm title="确定删除该记录吗？" @confirm="deleteReport(row)">
                   <template #reference>
                     <el-button size="small" type="danger" link>删除</el-button>
                   </template>
                 </el-popconfirm>
+                <el-button v-if="!row.maintenanceAdded" size="small" type="primary" link @click="saveToMaintenance(row)">加入维修总结</el-button>
+                <el-button v-else size="small" type="success" link disabled>已加入</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -166,21 +165,6 @@ const _prevReportLocked = ref(false);
 const apiBase3 = import.meta.env.VITE_API_BASE || '';
 
 // 从数据库加载哪些工单已加入维修记录 + 已提交
-const syncAllToCloud = async () => {
-  if (!store.globalReports.length) { ElMessage.info('没有可同步的记录'); return; }
-  let count = 0;
-  for (const rep of store.globalReports) {
-    try {
-      await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rep),
-      });
-      count++;
-    } catch {}
-  }
-  ElMessage.success(`已同步 ${count} 条记录到云端`);
-};
-
 const loadMaintenanceStatus = async () => {
   // 从 MySQL 加载缺失的报告
   try {
@@ -360,9 +344,17 @@ const roleNameMap: Record<string, string> = {
   intern: '访客'
 };
 
-const handleReportSubmitted = (report: any) => {
+const handleReportSubmitted = async (report: any) => {
   store.submitReport(report);
   reportLocked.value = true;
+  // 同步完整报告（report_data）到 MySQL，否则管理端"全局检修记录"看不到最新记录
+  try {
+    await fetch(`${apiBase3}/maintenance/reports/sync?user_id=${encodeURIComponent(store.username)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+  } catch { /* 云端写入失败不阻断本地归档 */ }
   ElMessage.success('报告已提交归档');
 };
 
@@ -485,7 +477,7 @@ onMounted(() => {
 }
 
 /* 顶栏按钮 */
-.graph-btn, .neo4j-btn {
+.graph-btn {
   font-size: 14px;
 }
 

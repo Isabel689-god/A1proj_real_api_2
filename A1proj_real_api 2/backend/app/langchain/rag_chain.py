@@ -121,11 +121,10 @@ def _build_context(docs: list[dict]) -> str:
         content = _re.sub(r"\s+", " ", content).strip()
         score = doc.get("score", 0)
         source = doc.get("source", "knowledge_base")
-        quality = ">90%" if score > 0.4 else (">75%" if score > 0.25 else ">50%")
         markers = [m for k, m in DIAGNOSTIC_MARKERS.items() if k in content]
         marker_str = " ".join(list(dict.fromkeys(markers))[:4])
         block = (
-            f"【资料{idx}】匹配度: {score:.0%} {quality}  {marker_str}\n"
+            f"【资料{idx}】匹配度: {score:.0%}  {marker_str}\n"
             f"来源: {source}\n"
             f"{content}"
         )

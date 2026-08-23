@@ -18,7 +18,7 @@ DEFAULT_GROUPS = {
     },
     "管理人员": {
         "description": "全部功能权限，含用户管理和手册上传",
-        "permissions": ["chat", "view_graph", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload"],
+        "permissions": ["chat", "view_graph", "submit_report", "upload_manual", "update_graph"],
     },
 }
 

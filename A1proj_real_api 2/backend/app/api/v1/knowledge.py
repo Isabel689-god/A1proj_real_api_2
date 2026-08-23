@@ -284,36 +284,6 @@ def trigger_single_extraction(doc_id: str):
     }
 
 
-# ==================== Neo4j AuraDB 知识图谱（直连云实例） ====================
-
-from app.services.neo4j_service import Neo4jService as _Neo4jService
-
-
-@router.get("/neo4j-graph/node/{eid}")
-def get_neo4j_node_detail(eid: str):
-    """Neo4j AuraDB 单个节点详情。"""
-    svc = _Neo4jService()
-    try:
-        detail = svc.get_node_detail(eid)
-        if detail is None:
-            raise HTTPException(status_code=404, detail=f"节点 {eid} 不存在")
-        return {"code": 200, "data": detail}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Neo4j AuraDB 查询失败: {exc}")
-
-
-@router.get("/neo4j-graph")
-def get_neo4j_graph(entity_type: str | None = None):
-    """Neo4j AuraDB 全量图谱（ECharts 格式）。entity_type 可选: device/component/fault/fault_cause/solution。"""
-    svc = _Neo4jService()
-    try:
-        return svc.get_full_graph(entity_type)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Neo4j AuraDB 查询失败: {exc}")
-
-
 @router.get("/json-graph")
 def get_json_graph():
     """JSON 文件图谱（兼容旧接口）。"""

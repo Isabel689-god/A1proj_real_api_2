@@ -32,10 +32,10 @@ class UserService:
         fallback_groups = {
             "基础访客": ["chat", "view_graph"],
             "维修人员": ["chat", "submit_report"],
-            "管理人员": ["chat", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload", "view_graph"],
+            "管理人员": ["chat", "submit_report", "upload_manual", "update_graph", "view_graph"],
             # 向后兼容旧组名
             "访客组": ["chat", "view_graph"],
-            "管理组": ["chat", "submit_report", "direct_upload", "update_graph", "audit_uploads", "request_upload", "view_graph"],
+            "管理组": ["chat", "submit_report", "upload_manual", "update_graph", "view_graph"],
             "普通维修人员": ["chat", "submit_report"],
             "高级维修人员": ["chat", "submit_report"],
         }
