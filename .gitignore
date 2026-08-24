@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Demo media too large for GitHub (100MB file limit)
+/doc/*.pptx
+/doc/*.mp4
+/doc/*.mov
+/__MACOSX/
